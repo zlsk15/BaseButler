@@ -229,7 +229,6 @@ namespace CookingSourceExpand
             return list;
         }
 
-        [HarmonyPatch(typeof(CookingUI.Ac_Item_GetCookingBagList), nameof(CookingUI.Ac_Item_GetCookingBagList.SendAction))]
         internal static class AppendShelfSourcesPatch
         {
             static void Prefix(
@@ -258,7 +257,6 @@ namespace CookingSourceExpand
             }
         }
 
-        [HarmonyPatch(typeof(CookingUI.Ac_Cooking_Open), nameof(CookingUI.Ac_Cooking_Open.SendAction))]
         internal static class AppendShelvesToCookingOpenPatch
         {
             static void Prefix(
@@ -323,7 +321,6 @@ namespace CookingSourceExpand
             return true;
         }
 
-        [HarmonyPatch(typeof(CookingUI.Ac_Item_GetHandMadeBagList), nameof(CookingUI.Ac_Item_GetHandMadeBagList.SendAction))]
         internal static class AppendShelvesToHandMadeBagListPatch
         {
             static void Prefix(
