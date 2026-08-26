@@ -9,8 +9,8 @@ Compatible with Steam `v1.0.14911` (IL2CPP metadata v31). Built on BepInEx 6 (Bl
 
 ## 功能 Features
 
-该 Mod 同时扩展两个制作界面的来源容器：
-This mod expands source containers for two crafting UIs at once:
+该 Mod 同时扩展三个界面的来源容器：
+This mod expands source containers for three UIs at once:
 
 1. **烹饪面板（灶台 / 火炉）Cooking panel (stove / furnace)**
    食材来源从"仅有冰箱、冷柜"扩展为"所有带储物功能的家具"（箱子、柜子、储物架、冰箱、冷柜等）。
@@ -20,8 +20,12 @@ This mod expands source containers for two crafting UIs at once:
    材料来源从"仅有工作台抽屉/工具柜"扩展为"所有带储物功能的家具"。
    Material sources expand from "workbench drawer / tool cabinet only" to all storage furniture.
 
-做菜 / 手工前无需先把食材搬到特定容器，直接从各处储物柜取用即可。
-No need to shuffle ingredients into a specific container first — take them straight from any storage in your base.
+3. **无人机交易界面 Drone-trade UI (trade / donate / supply)**
+   可调用来源从"仅有背包/无人机本体"扩展为"所有带储物功能的家具"，多个储物柜之间可直接互通取料。
+   Selectable sources expand from "backpack / drone only" to all storage furniture, so multiple cabinets are freely usable across the trade interface.
+
+做菜 / 手工 / 无人机交易前无需先把食材搬到特定容器，直接从各处储物柜取用即可。
+No need to shuffle items into a specific container first — take them straight from any storage in your base.
 
 ### 排除名单 Exclusions
 

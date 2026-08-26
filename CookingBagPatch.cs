@@ -361,5 +361,69 @@ namespace CookingSourceExpand
                 }
             }
         }
+
+        // ===== 无人机交易界面（TradeUI）材料来源扩展 =====
+        // 无人机交易/捐赠/供给界面由 Ac_TradeUI_SetContainerTabs 传入 List<TradeContainerInfo> 决定可用来源容器
+        //（默认只有背包/无人机本体）。与手搓同一套逻辑，扩展为所有带储物背包的家具。
+        private static bool TryAddTradeContainer(long oid, int cid, Bush.List<HotGame.TradeContainerInfo> target)
+        {
+            if (oid == 0 || cid == 0) return false;
+            if (IsExcluded(cid)) return false;
+
+            string srcName = TryResolveName(cid);
+            if (IsExcludedName(srcName))
+            {
+                CookingSourceExpandPlugin.Log.LogInfo($"[CookingSourceExpand] ★排除 configId={cid} name={srcName} ownerId={oid}");
+                return false;
+            }
+
+            foreach (var t in target)
+            {
+                if (t != null && t.OwnerId == oid) return false;
+            }
+
+            var tc = new HotGame.TradeContainerInfo();
+            tc.OwnerId = oid;
+            tc.FurnitureConfigId = cid;
+            tc.IsFridge = false;
+            target.Add(tc);
+
+            CookingSourceExpandPlugin.Log.LogInfo($"[CookingSourceExpand] ★无人机交易来源 configId={cid} name={srcName} ownerId={oid}");
+            return true;
+        }
+
+        internal static class AppendShelvesToTradeContainerTabsPatch
+        {
+            static void Prefix(Bush.List<HotGame.TradeContainerInfo> Containers)
+            {
+                try
+                {
+                    if (Containers == null) return;
+                    var world = HotGame.Battle.Logic.BattleLogicWorld.Instance;
+                    if (world == null) return;
+                    var am = world._AgentManager;
+                    if (am == null) return;
+
+                    int homeMap = 0;
+                    try { homeMap = am.GetHomeMapId(); } catch (Exception) { }
+                    var furn = am.GetFurnituresWithBag(homeMap, false, false);
+                    if (furn == null) return;
+
+                    int added = 0;
+                    foreach (var f in furn)
+                    {
+                        if (f == null) continue;
+                        if (TryAddTradeContainer(f.InstanceId, f.AgentConfigId, Containers))
+                            added++;
+                    }
+
+                    CookingSourceExpandPlugin.Log.LogInfo($"[CookingSourceExpand] ★TradeContainerTabs: 储物家具 {furn.Count} 个，无人机交易新增来源 {added} 个。");
+                }
+                catch (Exception e)
+                {
+                    CookingSourceExpandPlugin.Log.LogError($"[CookingSourceExpand] TradeContainerTabs 外层异常：{e}");
+                }
+            }
+        }
     }
 }

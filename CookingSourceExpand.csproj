@@ -16,31 +16,31 @@
   <ItemGroup>
     <!-- BepInEx 6 框架 -->
     <Reference Include="BepInEx.Core">
-      <HintPath>..\BepInEx\core\BepInEx.Core.dll</HintPath>
+      <HintPath>..\..\BepInEx\core\BepInEx.Core.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="BepInEx.Unity.IL2CPP">
-      <HintPath>..\BepInEx\core\BepInEx.Unity.IL2CPP.dll</HintPath>
+      <HintPath>..\..\BepInEx\core\BepInEx.Unity.IL2CPP.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="0Harmony">
-      <HintPath>..\BepInEx\core\0Harmony.dll</HintPath>
+      <HintPath>..\..\BepInEx\core\0Harmony.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="Il2CppInterop.Runtime">
-      <HintPath>..\BepInEx\core\Il2CppInterop.Runtime.dll</HintPath>
+      <HintPath>..\..\BepInEx\core\Il2CppInterop.Runtime.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="Il2CppInterop.Common">
-      <HintPath>..\BepInEx\core\Il2CppInterop.Common.dll</HintPath>
+      <HintPath>..\..\BepInEx\core\Il2CppInterop.Common.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="MonoMod.RuntimeDetour">
-      <HintPath>..\BepInEx\core\MonoMod.RuntimeDetour.dll</HintPath>
+      <HintPath>..\..\BepInEx\core\MonoMod.RuntimeDetour.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="MonoMod.Utils">
-      <HintPath>..\BepInEx\core\MonoMod.Utils.dll</HintPath>
+      <HintPath>..\..\BepInEx\core\MonoMod.Utils.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>
@@ -48,31 +48,31 @@
   <ItemGroup>
     <!-- 游戏 interop 程序集 -->
     <Reference Include="Il2Cppmscorlib">
-      <HintPath>..\BepInEx\interop\Il2Cppmscorlib.dll</HintPath>
+      <HintPath>..\..\BepInEx\interop\Il2Cppmscorlib.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="Il2CppSystem">
-      <HintPath>..\BepInEx\interop\Il2CppSystem.dll</HintPath>
+      <HintPath>..\..\BepInEx\interop\Il2CppSystem.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="Il2CppSystem.Core">
-      <HintPath>..\BepInEx\interop\Il2CppSystem.Core.dll</HintPath>
+      <HintPath>..\..\BepInEx\interop\Il2CppSystem.Core.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="Assembly-CSharp">
-      <HintPath>..\BepInEx\interop\Assembly-CSharp.dll</HintPath>
+      <HintPath>..\..\BepInEx\interop\Assembly-CSharp.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="Assembly-CSharp-firstpass">
-      <HintPath>..\BepInEx\interop\Assembly-CSharp-firstpass.dll</HintPath>
+      <HintPath>..\..\BepInEx\interop\Assembly-CSharp-firstpass.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="HotUpdate">
-      <HintPath>..\BepInEx\interop\HotUpdate.dll</HintPath>
+      <HintPath>..\..\BepInEx\interop\HotUpdate.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="UnityEngine.CoreModule">
-      <HintPath>..\BepInEx\interop\UnityEngine.CoreModule.dll</HintPath>
+      <HintPath>..\..\BepInEx\interop\UnityEngine.CoreModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>

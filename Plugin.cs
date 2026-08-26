@@ -20,7 +20,7 @@ namespace CookingSourceExpand
             Log = base.Log;
             var harmony = new Harmony(PluginInfo.GUID);
             SafePatch.ApplyAll(harmony);
-            Log.LogInfo($"{PluginInfo.Name} v{PluginInfo.Version} 已加载：烹饪（灶台/火炉）面板食材来源已扩展为所有带储物背包的家具。");
+            Log.LogInfo($"{PluginInfo.Name} v{PluginInfo.Version} 已加载：烹饪/手工制作/无人机交易面板的可调用来源已扩展为所有带储物背包的家具。");
         }
     }
 
@@ -28,7 +28,7 @@ namespace CookingSourceExpand
     {
         public const string GUID = "com.cookingsourceexpand.mod";
         public const string Name = "CookingSourceExpand";
-        public const string Version = "1.0.0";
+        public const string Version = "1.2.0";
     }
 
     /// <summary>
@@ -49,6 +49,8 @@ namespace CookingSourceExpand
                      typeof(CookingBagPatch.AppendShelvesToCookingOpenPatch), "Prefix", "烹饪面板");
             TryPatch(typeof(CookingUI.Ac_Item_GetHandMadeBagList), "SendAction",
                      typeof(CookingBagPatch.AppendShelvesToHandMadeBagListPatch), "Prefix", "手工制作来源");
+            TryPatch(typeof(CookingUI.Ac_TradeUI_SetContainerTabs), "SendAction",
+                     typeof(CookingBagPatch.AppendShelvesToTradeContainerTabsPatch), "Prefix", "无人机交易来源");
         }
 
         private static void TryPatch(Type targetType, string methodName, Type patchType, string patchMethod, string label)
