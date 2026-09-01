@@ -90,6 +90,13 @@ namespace CookingSourceExpand
             return "";
         }
 
+        private static readonly int[] BoxConfigIds = {
+    201, 202, 203, 204, 215, 872, 875,
+    9056, 9057, 9092, 9095, 9096, 9099, 9084, 9159, 9168,
+    9171, 9172, 9173, 15001, 307, 308, 321,
+    80011, 80156, 80157, 80159, 80160,
+};
+
         private static void CollectSources(HotGame.Battle.Logic.AgentManager agentManager,
                                            long excludeOwnerId, int excludeConfigId,
                                            Bush.List<HotGame.CookingFridgeInfo> targetFridge,
@@ -106,36 +113,23 @@ namespace CookingSourceExpand
 
             try
             {
-                int homeMap = 0;
-                try { homeMap = agentManager.GetHomeMapId(); } catch (Exception) { }
-
-                // GetFurnituresWithBag 返回 List<Furniture>；GetAllBagFurnitures 返回
-                // List<BagFurniture>，两者泛型不兼容，故各自独立枚举，不能互相赋值。
-                var furn = agentManager.GetFurnituresWithBag(homeMap, false, false);
+                // 跨层枚举：用 GetAllFurnitures 取世界全部家具（含吊篮/二楼/地下室柜子），
+                // 再按存储家具 configId 白名单 + IsHomeMap 归属过滤，保证只纳入"当前角色家"
+                // 的储物容器。IsHomeMap 把当前家及其所有楼层 map 视为一组，故不会漏二楼/地下室，
+                // 同时排除女大学生等"其它角色家"的柜子、以及门窗车等非储物物。
+                var furn = agentManager.GetAllFurnitures();
                 if (furn != null)
                 {
                     enumerCount = furn.Count;
                     foreach (var f in furn)
                     {
                         if (f == null) continue;
-                        if (TryAddSource(f.InstanceId, f.AgentConfigId, excludeOwnerId, excludeConfigId,
+                        int cid = f.AgentConfigId;
+                        if (!IsBoxConfig(cid)) continue;
+                        if (!IsOwnMap(agentManager, f)) continue; // 只取当前角色家的家具
+                        if (TryAddSource(f.InstanceId, cid, excludeOwnerId, excludeConfigId,
                                          targetFridge, targetBag, targetConfigs, targetLocked, itemManager))
                             added++;
-                    }
-                }
-                else
-                {
-                    var fb = agentManager.GetAllBagFurnitures();
-                    if (fb != null)
-                    {
-                        enumerCount = fb.Count;
-                        foreach (var f in fb)
-                        {
-                            if (f == null) continue;
-                            if (TryAddSource(f.InstanceId, f.AgentConfigId, excludeOwnerId, excludeConfigId,
-                                             targetFridge, targetBag, targetConfigs, targetLocked, itemManager))
-                                added++;
-                        }
                     }
                 }
             }
@@ -145,6 +139,30 @@ namespace CookingSourceExpand
             }
 
             CookingSourceExpandPlugin.Log.LogInfo($"[CookingSourceExpand] ★{tag}: 储物家具枚举 {enumerCount} 个，新增来源 {added} 个。");
+        }
+
+        private static bool IsBoxConfig(int configId)
+        {
+            foreach (var id in BoxConfigIds)
+            {
+                if (id == configId) return true;
+            }
+            return false;
+        }
+
+        // 判断家具是否属于当前角色家（含其所有楼层 map）。用 IsHomeMap 归属过滤，排除其它角色
+        // 家里的储物柜，同时保留自家二楼/地下室。IsHomeMap 抛异常时按白名单配置 id 兜底放行。
+        private static bool IsOwnMap(HotGame.Battle.Logic.AgentManager am, Furniture f)
+        {
+            if (am == null || f == null) return true;
+            try
+            {
+                return am.IsHomeMap(f.MapConfigId);
+            }
+            catch (Exception)
+            {
+                return true;
+            }
         }
 
         private static bool TryAddSource(long oid, int cid,
@@ -362,6 +380,64 @@ namespace CookingSourceExpand
             }
         }
 
+        // ===== 工作台（ToolTable）材料来源扩展 =====
+        // 工作台 Ac_ToolTable_Open.SendAction 的 CabinetBags(List<Data_Bag>) + CabinetConfigIds(List<Int32>)
+        // 决定工作台自动填料的可用容器来源（默认只有背包 + 工作台自身，故取不到远处箱子里的料）。
+        // 与烹饪/手工同一套 CollectSources 机制，扩展为所有带储物背包的家具，并应用同一排除名单。
+        internal static class AppendShelvesToToolTableOpenPatch
+        {
+            static void Prefix(
+                Bush.List<CookingUI.Data_Bag> BagList,
+                HotGame.HandMadeState HandMadeState,
+                Int64 TargetId,
+                Int32 ProductionLv,
+                Bush.List<CookingUI.Data_Bag> CabinetBags,
+                Bush.List<Int32> CabinetConfigIds)
+            {
+                try
+                {
+                    var world = HotGame.Battle.Logic.BattleLogicWorld.Instance;
+                    if (world == null) return;
+                    var am = world._AgentManager;
+                    if (am == null) return;
+                    var im = world._ItemManager;
+
+                    int homeMap = 0;
+                    try { homeMap = am.GetHomeMapId(); } catch (Exception) { }
+
+                    // —— 构建工作台跨面板取料来源缓存（仅在打开工作台的安全上下文枚举一次）——
+                    // 用 GetAllFurnitures 跨层取全部储物家具（含二楼/地下室柜子），按白名单过滤。
+                    var furn = am.GetAllFurnitures();
+                    var owners = new System.Collections.Generic.List<long>();
+                    if (furn != null)
+                    {
+                        foreach (var f in furn)
+                        {
+                            if (f == null) continue;
+                            long oid = f.InstanceId; int cid = f.AgentConfigId;
+                            if (oid == 0) continue;
+                            if (!IsBoxConfig(cid)) continue;
+                            if (IsExcluded(cid)) continue;
+                            if (IsExcludedName(TryResolveName(cid))) continue;
+                            if (!IsOwnMap(am, f)) continue; // 只缓存当前角色家的储物家具
+                            if (!owners.Contains(oid)) owners.Add(oid);
+                            if (owners.Count >= 18) break;
+                        }
+                    }
+                    CookingSourceExpandPlugin.WorkbenchSourceOwners = owners.ToArray();
+                    CookingSourceExpandPlugin.Log.LogInfo($"[CookingSourceExpand] ★工作台跨面板缓存 {owners.Count} 个来源");
+
+                    // —— 原有扩展：把储物家具加入工作台 CabinetBags ——
+                    if (CabinetBags == null) return;
+                    CollectSources(am, TargetId, 0, null, CabinetBags, CabinetConfigIds, null, im, "ToolTableOpen");
+                }
+                catch (Exception e)
+                {
+                    CookingSourceExpandPlugin.Log.LogError($"[CookingSourceExpand] ToolTableOpen 外层异常：{e}");
+                }
+            }
+        }
+
         // ===== 无人机交易界面（TradeUI）材料来源扩展 =====
         // 无人机交易/捐赠/供给界面由 Ac_TradeUI_SetContainerTabs 传入 List<TradeContainerInfo> 决定可用来源容器
         //（默认只有背包/无人机本体）。与手搓同一套逻辑，扩展为所有带储物背包的家具。
@@ -425,5 +501,40 @@ namespace CookingSourceExpand
                 }
             }
         }
+
+        // ===== 工作台跨面板取料 =====
+        // 工作台默认只从"当前展示面板"取料。这里在 SelectItemsForRecipe 的 Prefix 里把 ownerIds
+        // 合并进"打开工作台时枚举缓存"的所有储物家具，实现不切面板也能跨箱子取料。
+        // 注意：绝不能在此处调用 GetFurnituresWithBag（会在该深层数据上下文死锁导致卡死闪退），
+        // 只用 AppendShelvesToToolTableOpenPatch 在安全上下文里构建的缓存。
+        internal static class WorkbenchCrossSourcePatch
+        {
+            static void Prefix(Bush.Dictionary<int, int> materialNeeded, ref long[] ownerIds)
+            {
+                try
+                {
+                    var cached = CookingSourceExpandPlugin.WorkbenchSourceOwners;
+                    if (ownerIds == null || cached == null || cached.Length == 0) return;
+
+                    var set = new System.Collections.Generic.List<long>(ownerIds.Length + cached.Length);
+                    foreach (var id in ownerIds) if (id != 0) set.Add(id);
+                    foreach (var id in cached) if (id != 0 && !set.Contains(id)) set.Add(id);
+
+                    if (set.Count > ownerIds.Length)
+                    {
+                        int appended = set.Count - ownerIds.Length;
+                        ownerIds = set.ToArray();
+                        CookingSourceExpandPlugin.Log.LogInfo($"[CookingSourceExpand] 工作台跨面板取料：来源已扩为 {ownerIds.Length} 个（新增 {appended}）");
+                    }
+                }
+                catch (Exception e)
+                {
+                    CookingSourceExpandPlugin.Log.LogInfo($"[CookingSourceExpand] 工作台跨面板 Prefix err {e.GetType().Name}");
+                }
+            }
+        }
+
+        // 注：储物面板跨柜互通（吊篮/柜子面板内切换其它储物容器）因受 WebView 前端面板限制
+        // 未能稳定实现，已从发布版移除，仅在内部迭代中使用。
     }
 }
