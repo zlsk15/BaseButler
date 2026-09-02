@@ -1,6 +1,6 @@
 # Survival Log — Cooking Source Expand (食材来源扩展)
 
-当前版本：**v1.3.1** · Latest: v1.3.1
+当前版本：**v1.3.2** · Latest: v1.3.2
 
 一个《生存日志》(Survival Log) 的 BepInEx 6 插件，把**烹饪面板**、**手工制作界面**、**无人机交易界面**和**工作台**的食材/材料来源扩展为基地内所有带储物功能的家具。
 A BepInEx 6 plugin for Survival Log that expands the **cooking panel**, **handcrafting UI**, **drone-trade UI** and **workbench** source containers to every storage-capable furniture in your base.
@@ -37,6 +37,16 @@ No need to shuffle items into a specific container first — take them straight 
 
 仅将**当前角色家**（含二楼、地下室）的储物家具作为来源，自动排除其它角色（如女大学生）家里的柜子，避免串料。
 Only the **current character's home** storage (including 2nd floor & basement) is used; other characters' cabinets (e.g. a female college student) are excluded to avoid cross-contamination.
+
+### 按当前角色家枚举 (v1.3.2)
+
+四个界面统一改用 `GetFurnituresWithBag(当前家)` 枚举，多角色存档里其它角色家的家具绝不会混入本角色面板。
+All four UIs enumerate via `GetFurnituresWithBag(current home)`, so other characters' furniture never leaks into your panel in co-op saves.
+
+### 名字级排除 Name-level exclusions (v1.3.2)
+
+门窗、床（以“床”结尾，不误伤“床头柜”）、围栏、栅栏、燃气灶、微波炉等名字一律排除，跨角色统一生效，不再依赖逐字符固定的 configId。
+Furniture named as door/window, anything ending in “床” (bed; “床头柜” bedside cabinet unaffected), fence, stove, microwave are all excluded by name across every character.
 
 ### 来源过滤配置 Source whitelist config (v1.3.1)
 

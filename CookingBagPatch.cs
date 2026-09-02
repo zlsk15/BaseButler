@@ -35,6 +35,13 @@ namespace CookingSourceExpand
             30001,  // 防盗门
             35001,  // 防盗窗
             1027,   // 小汽车
+            // 女大学生角色家实测：窗户/床/围栏/电器类储物
+            30002,  // 钛合金大门
+            35002,  // 防弹窗
+            80064,  // 微波炉
+            80066,  // 燃气灶
+            80129,  // 实木床
+            80143,  // 围栏
         };
 
         private static readonly string[] ExcludedSourceNames =
@@ -52,6 +59,20 @@ namespace CookingSourceExpand
             "铁窗",
             "玻璃窗",
             "铝合金窗",
+            // 打工人/女大学生都会有、不应作为来源的家具类型（名字级统一排除，跨角色生效）
+            "防弹窗",
+            "钛合金",
+            "围栏",
+            "栅栏",
+            "燃气灶",
+            "煤气灶",
+            "微波炉",
+        };
+
+        /// <summary>以这些词结尾的名字也排除（主要用于"床"，避免误伤"床头柜"这类真储物）。</summary>
+        private static readonly string[] ExcludedNameSuffixes =
+        {
+            "床",
         };
 
         private static bool IsExcluded(int configId)
@@ -72,6 +93,11 @@ namespace CookingSourceExpand
                 if (string.IsNullOrEmpty(n)) continue;
                 if (nm.IndexOf(n.Trim(), StringComparison.Ordinal) >= 0) return true;
             }
+            foreach (var s in ExcludedNameSuffixes)
+            {
+                if (string.IsNullOrEmpty(s)) continue;
+                if (nm.EndsWith(s.Trim(), StringComparison.Ordinal)) return true;
+            }
             return false;
         }
 
@@ -91,10 +117,18 @@ namespace CookingSourceExpand
         }
 
         private static readonly int[] BoxConfigIds = {
+    // 打工人角色家（基础白名单）
     201, 202, 203, 204, 215, 872, 875,
     9056, 9057, 9092, 9095, 9096, 9099, 9084, 9159, 9168,
     9171, 9172, 9173, 15001, 307, 308, 321,
     80011, 80156, 80157, 80159, 80160,
+    // 女大学生角色家实测：储物柜/架/箱/冰箱/书架/橱柜/吊篮/酿酒桶/置物架
+    // 每个角色同一类家具的 configId 可能不同，故并入以保证工作台跨面板取料可用
+    10001, 66001, 9298,
+    80014, 80022, 80032, 80042, 80047, 80049, 80062, 80068,
+    80077, 80081, 80083, 80084, 80086, 80097,
+    80110, 80119, 80121, 80122, 80123, 80125, 80126, 80128,
+    80130, 80132, 80140, 80141,
 };
 
         private static void CollectSources(HotGame.Battle.Logic.AgentManager agentManager,
@@ -113,24 +147,17 @@ namespace CookingSourceExpand
 
             try
             {
-                // 跨层枚举：用 GetAllFurnitures 取世界全部家具（含吊篮/二楼/地下室柜子），
-                // 再按存储家具 configId 白名单 + IsHomeMap 归属过滤，保证只纳入"当前角色家"
-                // 的储物容器。IsHomeMap 把当前家及其所有楼层 map 视为一组，故不会漏二楼/地下室，
-                // 同时排除女大学生等"其它角色家"的柜子、以及门窗车等非储物物。
-                var furn = agentManager.GetAllFurnitures();
-                if (furn != null)
+                // 只枚举"当前角色家"（含其楼层组）的储物家具，避免取到整个世界后混入其它角色
+                //（女大学生/打工人互串）家里的柜子、以及门窗等非储物物。详见 EnumerateHomeSources。
+                var sources = EnumerateHomeSources(agentManager);
+                enumerCount = sources.Count;
+                foreach (var kv in sources)
                 {
-                    enumerCount = furn.Count;
-                    foreach (var f in furn)
-                    {
-                        if (f == null) continue;
-                        int cid = f.AgentConfigId;
-                        if (!IsBoxConfig(cid)) continue;
-                        if (!IsOwnMap(agentManager, f)) continue; // 只取当前角色家的家具
-                        if (TryAddSource(f.InstanceId, cid, excludeOwnerId, excludeConfigId,
-                                         targetFridge, targetBag, targetConfigs, targetLocked, itemManager))
-                            added++;
-                    }
+                    int cid = kv.Value;
+                    if (!IsBoxConfig(cid)) continue;
+                    if (TryAddSource(kv.Key, cid, excludeOwnerId, excludeConfigId,
+                                     targetFridge, targetBag, targetConfigs, targetLocked, itemManager))
+                        added++;
                 }
             }
             catch (Exception e)
@@ -139,6 +166,67 @@ namespace CookingSourceExpand
             }
 
             CookingSourceExpandPlugin.Log.LogInfo($"[CookingSourceExpand] ★{tag}: 储物家具枚举 {enumerCount} 个，新增来源 {added} 个。");
+        }
+
+        /// <summary>
+        /// 统一枚举"当前角色家"的储物家具来源（ownerId, configId）。
+        /// 优先用 am.GetFurnituresWithBag(GetHomeMapId(), …, useHomeGroup:true)——它只返回当前角色家
+        /// （含其 2F/地下室楼层组）且有储物背包的家具，天然杜绝跨角色泄漏（女大学生/打工人互串）与
+        /// 门窗外带物。仅在按家枚举失败/为空时退回全局枚举，但严格限定 MapConfigId==当前家，宁缺毋滥。
+        /// </summary>
+        private static System.Collections.Generic.List<System.Collections.Generic.KeyValuePair<long, int>>
+            EnumerateHomeSources(HotGame.Battle.Logic.AgentManager am)
+        {
+            var result = new System.Collections.Generic.List<System.Collections.Generic.KeyValuePair<long, int>>();
+            if (am == null) return result;
+
+            int homeMap = 0;
+            try { homeMap = am.GetHomeMapId(); } catch (Exception) { }
+
+            try
+            {
+                if (homeMap != 0)
+                {
+                    var homeBag = am.GetFurnituresWithBag(homeMap, false, true);
+                    if (homeBag != null && homeBag.Count > 0)
+                    {
+                        foreach (var f in homeBag)
+                        {
+                            if (f == null) continue;
+                            long oid = f.InstanceId; int cid = f.AgentConfigId;
+                            if (oid != 0 && cid != 0) result.Add(new System.Collections.Generic.KeyValuePair<long, int>(oid, cid));
+                        }
+                        CookingSourceExpandPlugin.Log.LogInfo($"[CookingSourceExpand] ★按角色家枚举：GetFurnituresWithBag(homeMap={homeMap}) -> {result.Count} 个");
+                        return result;
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                CookingSourceExpandPlugin.Log.LogInfo($"[CookingSourceExpand] GetFurnituresWithBag 枚举失败，转全局兜底：{e.GetType().Name}");
+            }
+
+            try
+            {
+                var all = am.GetAllFurnitures();
+                if (all != null)
+                {
+                    int added = 0;
+                    foreach (var f in all)
+                    {
+                        if (f == null) continue;
+                        long oid = f.InstanceId; int cid = f.AgentConfigId;
+                        if (oid == 0 || cid == 0) continue;
+                        // 兜底仅保留"当前家 map"的家具，隔离其它角色家的柜子
+                        try { if (f.MapConfigId != homeMap) continue; } catch (Exception) { continue; }
+                        result.Add(new System.Collections.Generic.KeyValuePair<long, int>(oid, cid));
+                        added++;
+                    }
+                    CookingSourceExpandPlugin.Log.LogInfo($"[CookingSourceExpand] ★全局兜底枚举 homeMap={homeMap} -> {added} 个");
+                }
+            }
+            catch (Exception) { }
+            return result;
         }
 
         private static bool IsBoxConfig(int configId)
@@ -362,7 +450,7 @@ namespace CookingSourceExpand
 
                     int homeMap = 0;
                     try { homeMap = am.GetHomeMapId(); } catch (Exception) { }
-                    var furn = am.GetFurnituresWithBag(homeMap, false, false);
+                    var furn = am.GetFurnituresWithBag(homeMap, false, true);
                     if (furn == null) return;
 
                     int added = 0;
@@ -408,24 +496,20 @@ namespace CookingSourceExpand
                     try { homeMap = am.GetHomeMapId(); } catch (Exception) { }
 
                     // —— 构建工作台跨面板取料来源缓存（仅在打开工作台的安全上下文枚举一次）——
-                    // 用 GetAllFurnitures 跨层取全部储物家具（含二楼/地下室柜子），按白名单过滤。
-                    var furn = am.GetAllFurnitures();
+                    // 只枚举当前角色家（含楼层组）的储物家具，杜绝跨角色泄漏。比原先 GetAllFurnitures
+                    // + IsHomeMap 更严格：不再把其它角色家的柜子混进工作台来源。
+                    var sources = EnumerateHomeSources(am);
                     var owners = new System.Collections.Generic.List<long>();
-                    if (furn != null)
+                    foreach (var kv in sources)
                     {
-                        foreach (var f in furn)
-                        {
-                            if (f == null) continue;
-                            long oid = f.InstanceId; int cid = f.AgentConfigId;
-                            if (oid == 0) continue;
-                            if (!IsBoxConfig(cid)) continue;
-                            if (IsExcluded(cid)) continue;
-                            if (!SourceFilterConfig.IsAllowed(cid)) continue;
-                            if (IsExcludedName(TryResolveName(cid))) continue;
-                            if (!IsOwnMap(am, f)) continue; // 只缓存当前角色家的储物家具
-                            if (!owners.Contains(oid)) owners.Add(oid);
-                            if (owners.Count >= 18) break;
-                        }
+                        long oid = kv.Key; int cid = kv.Value;
+                        if (oid == 0) continue;
+                        if (!IsBoxConfig(cid)) continue;
+                        if (IsExcluded(cid)) continue;
+                        if (!SourceFilterConfig.IsAllowed(cid)) continue;
+                        if (IsExcludedName(TryResolveName(cid))) continue;
+                        if (!owners.Contains(oid)) owners.Add(oid);
+                        if (owners.Count >= 18) break;
                     }
                     CookingSourceExpandPlugin.WorkbenchSourceOwners = owners.ToArray();
                     CookingSourceExpandPlugin.Log.LogInfo($"[CookingSourceExpand] ★工作台跨面板缓存 {owners.Count} 个来源");
@@ -486,7 +570,7 @@ namespace CookingSourceExpand
 
                     int homeMap = 0;
                     try { homeMap = am.GetHomeMapId(); } catch (Exception) { }
-                    var furn = am.GetFurnituresWithBag(homeMap, false, false);
+                    var furn = am.GetFurnituresWithBag(homeMap, false, true);
                     if (furn == null) return;
 
                     int added = 0;

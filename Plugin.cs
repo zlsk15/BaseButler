@@ -31,7 +31,7 @@ namespace CookingSourceExpand
     {
         public const string GUID = "com.cookingsourceexpand.mod";
         public const string Name = "CookingSourceExpand";
-        public const string Version = "v1.3.1";
+        public const string Version = "v1.3.2";
     }
 
     /// <summary>
