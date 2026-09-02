@@ -1,6 +1,6 @@
 # Survival Log — Cooking Source Expand (食材来源扩展)
 
-当前版本：**v1.3.2** · Latest: v1.3.2
+当前版本：**v1.4.3** · Latest: v1.4.3
 
 一个《生存日志》(Survival Log) 的 BepInEx 6 插件，把**烹饪面板**、**手工制作界面**、**无人机交易界面**和**工作台**的食材/材料来源扩展为基地内所有带储物功能的家具。
 A BepInEx 6 plugin for Survival Log that expands the **cooking panel**, **handcrafting UI**, **drone-trade UI** and **workbench** source containers to every storage-capable furniture in your base.
@@ -47,6 +47,15 @@ All four UIs enumerate via `GetFurnituresWithBag(current home)`, so other charac
 
 门窗、床（以“床”结尾，不误伤“床头柜”）、围栏、栅栏、燃气灶、微波炉等名字一律排除，跨角色统一生效，不再依赖逐字符固定的 configId。
 Furniture named as door/window, anything ending in “床” (bed; “床头柜” bedside cabinet unaffected), fence, stove, microwave are all excluded by name across every character.
+
+### 拖动定位储物处 Drag-to-scroll (v1.4.3)
+
+烹饪/手工/无人机交易面板的箱子来源条**支持鼠标按住左右拖动**来滑动查找箱子（不再只靠左右箭头点按），并显示一条**细横向滚动条**辅助定位。
+Driving the source bar in cooking / handcraft / drone-trade: **hold and drag with the mouse** to scroll and find the right box (no more tapping the arrow buttons), with a thin scrollbar for positioning.
+
+- 实现方式：mod 启动时自动给三个面板的 HTML 打一份**干净补丁**；游戏更新若覆盖 HTML，下次启动 mod 会自动重新打上，**抗更新**。
+  Implemented via a self-healing HTML auto-patch applied at mod startup; if a game update overwrites the HTML, the mod re-applies it on next launch (update-resilient).
+- 同时兼容烹饪的 `#bagTabsScroll` 和工作台/交易的 `#leftTabsScroll` 两种来源条容器。
 
 ### 来源过滤配置 Source whitelist config (v1.3.1)
 
@@ -99,5 +108,21 @@ BepInEx 6 + dotnet runtime are bundled — no extra setup needed.
 - Game version: **v1.0.14911** (IL2CPP metadata v31).
 - First launch is slower (BepInEx generates Interop assemblies, ~1–3 min) — this is normal.
 - Back up your save before use.
-## v1.4.3
+
+## 更新日志 Changelog
+
+### v1.4.3
 - 前端增强：烹饪/手工/无人机交易面板的箱子来源条支持鼠标拖动滑动查找，并显示细滚动条（mod 启动时自动给三个面板 HTML 打干净补丁，游戏更新自动重打）。
+- 前端 smooth：drag-to-scroll + thin scrollbar on the source bar, applied via a self-healing HTML auto-patch.
+
+### v1.3.2
+- 按当前角色家枚举、名字级跨角色排除、白名单扩充（详见上文“按当前角色家枚举”等小节）。
+
+### v1.3.1
+- 来源过滤配置（`CookingSourceExpand.cfg`）、静默无窗（`BepInEx.cfg`）。
+
+### v1.3.0
+- 归属过滤：仅当前角色家的储物家具作为来源。
+
+### v1.1.1
+- 首个稳定发布版。
