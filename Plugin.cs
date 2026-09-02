@@ -21,6 +21,7 @@ namespace CookingSourceExpand
         {
             Log = base.Log;
             SourceFilterConfig.Load(Config);
+            WebViewHtmlPatcher.ApplyAll(Log);
             var harmony = new Harmony(PluginInfo.GUID);
             SafePatch.ApplyAll(harmony);
             Log.LogInfo($"{PluginInfo.Name} v{PluginInfo.Version} 已加载：烹饪（灶台/火炉）面板食材来源已扩展为所有带储物背包的家具。");
@@ -31,7 +32,7 @@ namespace CookingSourceExpand
     {
         public const string GUID = "com.cookingsourceexpand.mod";
         public const string Name = "CookingSourceExpand";
-        public const string Version = "v1.3.2";
+        public const string Version = "v1.4.3";
     }
 
     /// <summary>

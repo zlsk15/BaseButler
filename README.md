@@ -99,3 +99,5 @@ BepInEx 6 + dotnet runtime are bundled — no extra setup needed.
 - Game version: **v1.0.14911** (IL2CPP metadata v31).
 - First launch is slower (BepInEx generates Interop assemblies, ~1–3 min) — this is normal.
 - Back up your save before use.
+## v1.4.3
+- 前端增强：烹饪/手工/无人机交易面板的箱子来源条支持鼠标拖动滑动查找，并显示细滚动条（mod 启动时自动给三个面板 HTML 打干净补丁，游戏更新自动重打）。
