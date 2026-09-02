@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using BepInEx;
@@ -19,6 +20,7 @@ namespace CookingSourceExpand
         public override void Load()
         {
             Log = base.Log;
+            SourceFilterConfig.Load(Config);
             var harmony = new Harmony(PluginInfo.GUID);
             SafePatch.ApplyAll(harmony);
             Log.LogInfo($"{PluginInfo.Name} v{PluginInfo.Version} 已加载：烹饪（灶台/火炉）面板食材来源已扩展为所有带储物背包的家具。");
@@ -29,7 +31,62 @@ namespace CookingSourceExpand
     {
         public const string GUID = "com.cookingsourceexpand.mod";
         public const string Name = "CookingSourceExpand";
-        public const string Version = "v1.3.0";
+        public const string Version = "v1.3.1";
+    }
+
+    /// <summary>
+    /// 来源箱子过滤配置（玩家可调，纯后端数据过滤）。
+    /// 箱子太多导致来源列表过长时，可在 BepInEx\config\CookingSourceExpand.cfg 里：
+    ///   · IncludeBoxConfigIds      非空时仅把这些箱子类型(configId)作为来源（白名单）
+    ///   · ExtraExcludedBoxConfigIds 这些箱子类型(configId)总是被排除，即使命中默认白名单
+    /// 留空即维持 v1.3.0 的"全部默认储物箱子"行为。
+    /// </summary>
+    internal static class SourceFilterConfig
+    {
+        public static readonly HashSet<int> IncludeSet = new HashSet<int>();
+        public static readonly HashSet<int> ExtraExcludeSet = new HashSet<int>();
+
+        public static void Load(BepInEx.Configuration.ConfigFile config)
+        {
+            if (config == null) return;
+            IncludeSet.Clear();
+            ExtraExcludeSet.Clear();
+            try
+            {
+                var inc = config.Bind<string>("Sources", "IncludeBoxConfigIds", string.Empty,
+                    "仅把这些箱子类型(configId)作为来源，多个用英文逗号分隔；留空=使用全部默认储物箱子。");
+                var exc = config.Bind<string>("Sources", "ExtraExcludedBoxConfigIds", string.Empty,
+                    "额外排除这些箱子类型(configId)，多个用英文逗号分隔；即使命中默认白名单也会被排除。");
+                Fill(IncludeSet, inc.Value);
+                Fill(ExtraExcludeSet, exc.Value);
+                CookingSourceExpandPlugin.Log.LogInfo(
+                    $"[CookingSourceExpand] 来源过滤配置：白名单[{string.Join(",", IncludeSet)}] 额外排除[{string.Join(",", ExtraExcludeSet)}]");
+            }
+            catch (Exception e)
+            {
+                CookingSourceExpandPlugin.Log.LogError($"[CookingSourceExpand] 读取来源过滤配置失败：{e.Message}");
+            }
+        }
+
+        private static void Fill(HashSet<int> set, string raw)
+        {
+            if (string.IsNullOrEmpty(raw)) return;
+            foreach (var part in raw.Split(new[] { ',', '，', ';', '；', ' ', '\t', '\n' },
+                                           StringSplitOptions.RemoveEmptyEntries))
+            {
+                int v;
+                if (int.TryParse(part.Trim(), out v)) set.Add(v);
+            }
+        }
+
+        /// <summary>箱子是否允许作为来源：先看额外排除，再看白名单（白名单非空时必须命中）。</summary>
+        public static bool IsAllowed(int configId)
+        {
+            if (IncludeSet.Count == 0 && ExtraExcludeSet.Count == 0) return true;
+            if (ExtraExcludeSet.Contains(configId)) return false;
+            if (IncludeSet.Count > 0 && !IncludeSet.Contains(configId)) return false;
+            return true;
+        }
     }
 
     /// <summary>

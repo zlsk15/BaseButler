@@ -176,6 +176,7 @@ namespace CookingSourceExpand
             if (oid == 0 || cid == 0) return false;
             if (oid == excludeOwnerId || cid == excludeConfigId) return false;
             if (IsExcluded(cid)) return false;
+            if (!SourceFilterConfig.IsAllowed(cid)) return false;
 
             string srcName = TryResolveName(cid);
             if (IsExcludedName(srcName))
@@ -317,6 +318,7 @@ namespace CookingSourceExpand
             if (oid == 0 || cid == 0) return false;
             if (oid == excludeOwnerId) return false;
             if (IsExcluded(cid)) return false;
+            if (!SourceFilterConfig.IsAllowed(cid)) return false;
 
             string srcName = TryResolveName(cid);
             if (IsExcludedName(srcName))
@@ -418,6 +420,7 @@ namespace CookingSourceExpand
                             if (oid == 0) continue;
                             if (!IsBoxConfig(cid)) continue;
                             if (IsExcluded(cid)) continue;
+                            if (!SourceFilterConfig.IsAllowed(cid)) continue;
                             if (IsExcludedName(TryResolveName(cid))) continue;
                             if (!IsOwnMap(am, f)) continue; // 只缓存当前角色家的储物家具
                             if (!owners.Contains(oid)) owners.Add(oid);
@@ -445,6 +448,7 @@ namespace CookingSourceExpand
         {
             if (oid == 0 || cid == 0) return false;
             if (IsExcluded(cid)) return false;
+            if (!SourceFilterConfig.IsAllowed(cid)) return false;
 
             string srcName = TryResolveName(cid);
             if (IsExcludedName(srcName))
