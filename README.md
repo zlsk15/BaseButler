@@ -115,10 +115,11 @@ BepInEx 6 + dotnet runtime are bundled — no extra setup needed.
 - **工作台一键取料修复**：取料源列表补上「工作台抽屉」（此前抽屉里的材料从不被取）；并新增「有料柜回头重扫」——扫过但有物品却没取到料的柜子，首轮结束后用更长超时回头再扫，把还缺的材料补足。已验证跨柜+抽屉自动取料并成功制作多配方。
 - 无人机交易来源修复：mod 注入的非冰柜来源正确显示为普通储物格（不再误用冰柜冻结模板）。
 - 来源排除新增：**老鼠笼/鼠笼、咖啡机** 不再作为烹饪/手工/无人机交易/工作台的存货来源。
-- 前端新增游戏内调试覆盖层（右上角黄色面板）便于定位取料过程。
+- **发布版静默化**：去除游戏内调试覆盖层，保留全部自动取料/制作逻辑（发布版画面纯净）。
 - Fixed one-click workbench gathering: workbench drawer now included as a material source, plus a slow re-scan pass revisits cabinets that had items but yielded no moves until shortages are covered. Verified automated cross-cabinet/drawer gathering crafts recipes successfully.
 - Added source exclusions for **rat traps / coffee machines** across cooking / handcraft / drone-trade / workbench.
 - Drone-trade injected non-fridge sources now render as normal storage grids (no more frozen-template style).
+- Release build is silent: the in-game debug overlay is stripped while all gathering/crafting logic is kept.
 
 ### v1.4.3
 - 前端增强：烹饪/手工/无人机交易面板的箱子来源条支持鼠标拖动滑动查找，并显示细滚动条（mod 启动时自动给三个面板 HTML 打干净补丁，游戏更新自动重打）。
