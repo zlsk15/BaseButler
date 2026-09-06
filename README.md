@@ -80,8 +80,8 @@ The package pre-ships `BepInEx.cfg` with the startup console disabled; logs stil
 
 ### 排除名单 Exclusions
 
-自动排除非储物容器：房门、木门、铁门、大门、窗户、木窗、铁窗、玻璃窗、铝合金窗、防盗门、防盗窗、小汽车、无人机、行李箱、植物灯培育箱。
-Automatically excluded: doors, windows, security doors/windows, cars, drones, luggage, planter boxes.
+自动排除非储物容器：房门、木门、铁门、大门、窗户、木窗、铁窗、玻璃窗、铝合金窗、防盗门、防盗窗、小汽车、无人机、行李箱、植物灯培育箱、老鼠笼、咖啡机。
+Automatically excluded: doors, windows, security doors/windows, cars, drones, luggage, planter boxes, rat traps, coffee machines.
 
 ---
 
@@ -111,15 +111,16 @@ BepInEx 6 + dotnet runtime are bundled — no extra setup needed.
 
 ## 更新日志 Changelog
 
-### v1.5.6
-- **工作台一键取料修复**：取料源列表补上「工作台抽屉」（此前抽屉里的材料从不被取）；并新增「有料柜回头重扫」——扫过但有物品却没取到料的柜子，首轮结束后用更长超时回头再扫，把还缺的材料补足。已验证跨柜+抽屉自动取料并成功制作多配方。
-- 无人机交易来源修复：mod 注入的非冰柜来源正确显示为普通储物格（不再误用冰柜冻结模板）。
-- 来源排除新增：**老鼠笼/鼠笼、咖啡机** 不再作为烹饪/手工/无人机交易/工作台的存货来源。
-- **发布版静默化**：去除游戏内调试覆盖层，保留全部自动取料/制作逻辑（发布版画面纯净）。
-- Fixed one-click workbench gathering: workbench drawer now included as a material source, plus a slow re-scan pass revisits cabinets that had items but yielded no moves until shortages are covered. Verified automated cross-cabinet/drawer gathering crafts recipes successfully.
-- Added source exclusions for **rat traps / coffee machines** across cooking / handcraft / drone-trade / workbench.
-- Drone-trade injected non-fridge sources now render as normal storage grids (no more frozen-template style).
-- Release build is silent: the in-game debug overlay is stripped while all gathering/crafting logic is kept.
+### v1.5.6（对比 v1.5.0）
+- **取料来源补齐「工作台抽屉」**：此前工作台本身抽屉里的材料不会被自动取用；本版将抽屉正式纳入取料来源，抽屉里的料也会被自动搬走补齐配方。
+- **新增「有料柜回头重扫」**：扫描中读取超时、或打开了却没真正取到料的柜子，会在首轮扫描后自动用更长超时二次重扫，把仍缺的材料补足，不再「粗查后跳过、缺料也不回头取」。
+- **背包纳入取料来源**（带同归属保护）：玩家背包也可作为取料来源，同时避免把材料搬给自己导致计数异常。
+- **无人机交易接入全屋储物并修复显示**：无人机交易来源扩展至全屋储物家具；修复 mod 注入的非冰柜来源误用「冰柜冻结模板」显示的问题，普通柜子正常显示为储物格。
+- **材料判定更精准**：物品名（归一化）精确匹配 + 物品ID/configId 双重判定，避免「铁片 / 精致铁片」等相似命名误取。
+- **材料足缺判定更可靠**：以实际累计搬运量判断是否足够，不依赖界面快照的滞后数据；官方判定材料全缺时插件同步取消制作。
+- **来源排除更合理**：只会从真正带储物的家具取料，并新增排除老鼠笼、咖啡机。
+- **发布版静默化**：去除运行期诊断浮层与提示条，不影响正常操作。
+- Comparison vs v1.5.0: added workbench **drawer** as a gathering source, a slow **re-scan pass** for cabinets that had items but yielded no moves, player **backpack** as a source, drone-trade source now also normalizes non-fridge grids; **normalized-name + itemId/configId** double matching, reliable cumulative material-sufficiency checks, extra exclusions (rat traps / coffee machines), and a **silent release** (no debug overlay).
 
 ### v1.4.3
 - 前端增强：烹饪/手工/无人机交易面板的箱子来源条支持鼠标拖动滑动查找，并显示细滚动条（mod 启动时自动给三个面板 HTML 打干净补丁，游戏更新自动重打）。
