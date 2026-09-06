@@ -77,4 +77,11 @@
     </Reference>
   </ItemGroup>
 
+  <!-- _probe 是诊断用独立小项目，绝不能被递归编译进本 mod（其 obj 的 AssemblyInfo 会导致属性重复报错） -->
+  <ItemGroup>
+    <Compile Remove="_probe\**" />
+    <EmbeddedResource Remove="_probe\**" />
+    <None Remove="_probe\**" />
+  </ItemGroup>
+
 </Project>

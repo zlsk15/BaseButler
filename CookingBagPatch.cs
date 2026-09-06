@@ -73,6 +73,9 @@ namespace CookingSourceExpand
             "酒桶",
             "榨汁机",
             "吊篮",
+            "老鼠笼",
+            "鼠笼",
+            "咖啡机",
         };
 
         /// <summary>以这些词结尾的名字也排除（主要用于"床"，避免误伤"床头柜"这类真储物）。</summary>
@@ -89,6 +92,11 @@ namespace CookingSourceExpand
             }
             return false;
         }
+
+        /// <summary>供 TradeSourceInjection 复用的公共包装：按 configId 判断是否为需要排除的非储物来源。</summary>
+        internal static bool IsStorageExcluded(int configId) => IsExcluded(configId);
+        internal static bool IsStorageExcludedName(string name) => IsExcludedName(name);
+        internal static string StorageResolveName(int configId) => TryResolveName(configId);
 
         private static bool IsExcludedName(string name)
         {
@@ -137,6 +145,14 @@ namespace CookingSourceExpand
     80130, 80132, 80140, 80141,
 };
 
+        /// <summary>
+        /// 工作台"一键取料/材料不足提示"用的可用材料预缓存：ownerId -> { itemConfigId : 数量 }。
+        /// 仅在打开工作台的安全上下文构建一次，杜绝在 reducer 线程枚举世界导致的死锁。
+        /// 覆盖：本角色背包 + 工作台来源的全部储物家具。跨角色家的柜子不进入。
+        /// </summary>
+        internal static readonly System.Collections.Generic.Dictionary<long, System.Collections.Generic.Dictionary<int, int>>
+            WorkbenchAvailableMaterials = new System.Collections.Generic.Dictionary<long, System.Collections.Generic.Dictionary<int, int>>();
+
         private static void CollectSources(HotGame.Battle.Logic.AgentManager agentManager,
                                            long excludeOwnerId, int excludeConfigId,
                                            Bush.List<HotGame.CookingFridgeInfo> targetFridge,
@@ -160,7 +176,8 @@ namespace CookingSourceExpand
                 foreach (var kv in sources)
                 {
                     int cid = kv.Value;
-                    if (!IsBoxConfig(cid)) continue;
+                    // 不设有限 BoxConfigIds 白名单：GetFurnituresWithBag 已只返回"带储物背包"的家具，
+                    // 下面 Excluded/名字排除会滤掉门/窗/床/电器等非储物物，故全部储物家具都能成为来源。
                     if (TryAddSource(kv.Key, cid, excludeOwnerId, excludeConfigId,
                                      targetFridge, targetBag, targetConfigs, targetLocked, itemManager))
                         added++;
@@ -242,6 +259,59 @@ namespace CookingSourceExpand
                 if (id == configId) return true;
             }
             return false;
+        }
+
+        /// <summary>
+        /// 在打开工作台的安全上下文构建"可用材料预缓存"。
+        /// ownerIds 覆盖：本角色全部背包(Data_Bag) + 工作台来源储物家具。
+        /// 只在安全上下文读 itemManager，reducer 线程的提示仅读此缓存，避免死锁。
+        /// </summary>
+        private static void BuildWorkbenchMaterialCache(HotGame.Battle.Logic.ItemManager itemManager,
+                                                       Bush.List<CookingUI.Data_Bag> playerBags,
+                                                       long[] ownerIds)
+        {
+            WorkbenchAvailableMaterials.Clear();
+            if (itemManager == null) return;
+
+            if (playerBags != null)
+            {
+                foreach (var b in playerBags)
+                {
+                    if (b == null || b.OwnerId == 0) continue;
+                    FillOwnerItemCounts(itemManager, b.OwnerId);
+                }
+            }
+            if (ownerIds != null)
+            {
+                foreach (var oid in ownerIds)
+                {
+                    if (oid != 0) FillOwnerItemCounts(itemManager, oid);
+                }
+            }
+
+            CookingSourceExpandPlugin.Log.LogInfo($"[CookingSourceExpand] 工作台可用材料预缓存 {WorkbenchAvailableMaterials.Count} 个来源");
+        }
+
+        private static void FillOwnerItemCounts(HotGame.Battle.Logic.ItemManager itemManager, long ownerId)
+        {
+            try
+            {
+                if (WorkbenchAvailableMaterials.ContainsKey(ownerId)) return;
+                var map = new System.Collections.Generic.Dictionary<int, int>();
+                var items = itemManager.GetItemDataList(ownerId);
+                if (items != null)
+                {
+                    foreach (var it in items)
+                    {
+                        if (it == null || it.ItemCount <= 0) continue;
+                        int cid = it.ItemConfigId;
+                        if (!map.ContainsKey(cid)) map[cid] = 0;
+                        map[cid] += it.ItemCount;
+                    }
+                }
+                WorkbenchAvailableMaterials[ownerId] = map;
+            }
+            catch (Exception) { /* 单个来源失败不影响其它来源 */ }
         }
 
         // 判断家具是否属于当前角色家（含其所有楼层 map）。用 IsHomeMap 归属过滤，排除其它角色
@@ -510,19 +580,25 @@ namespace CookingSourceExpand
                     {
                         long oid = kv.Key; int cid = kv.Value;
                         if (oid == 0) continue;
-                        if (!IsBoxConfig(cid)) continue;
+                        // 同 CollectSources：不做有限白名单，全量储物家具 + 排除名单，覆盖所有柜子
                         if (IsExcluded(cid)) continue;
                         if (!SourceFilterConfig.IsAllowed(cid)) continue;
                         if (IsExcludedName(TryResolveName(cid))) continue;
                         if (!owners.Contains(oid)) owners.Add(oid);
-                        if (owners.Count >= 18) break;
+                        if (owners.Count >= 60) break;
                     }
                     CookingSourceExpandPlugin.WorkbenchSourceOwners = owners.ToArray();
                     CookingSourceExpandPlugin.Log.LogInfo($"[CookingSourceExpand] ★工作台跨面板缓存 {owners.Count} 个来源");
 
+                    // —— 构建"一键取料/材料不足提示"用的可用材料预缓存（同样只在打开工作台的安全上下文做）——
+                    // BagList 是本角色背包，owners 是工作台来源储物家具；两者都纳入才不至于把背包里
+                    // 已有的材料误判为"缺"。绝不在 reducer 线程重建，提示只读这份缓存。
+                    BuildWorkbenchMaterialCache(im, BagList, CookingSourceExpandPlugin.WorkbenchSourceOwners);
+
                     // —— 原有扩展：把储物家具加入工作台 CabinetBags ——
                     if (CabinetBags == null) return;
                     CollectSources(am, TargetId, 0, null, CabinetBags, CabinetConfigIds, null, im, "ToolTableOpen");
+                    CookingSourceExpandPlugin.Log.LogInfo($"[CookingSourceExpand] ★ToolTableOpen 结果：CabinetBags={CabinetBags.Count} 个，CabinetConfigIds={(CabinetConfigIds == null ? 0 : CabinetConfigIds.Count)} 个");
                 }
                 catch (Exception e)
                 {
@@ -555,10 +631,12 @@ namespace CookingSourceExpand
             var tc = new HotGame.TradeContainerInfo();
             tc.OwnerId = oid;
             tc.FurnitureConfigId = cid;
-            tc.IsFridge = false;
+            // 官方 Ac_TradeUI_SetContainerTabs 生成 bagTabsJson 时只保留 IsFridge=true 的来源
+            //（否则仅冰柜显示），因此储物柜/书架/置物架等必须强制置 true 才能进入无人机来源列表。
+            tc.IsFridge = true;
             target.Add(tc);
 
-            CookingSourceExpandPlugin.Log.LogInfo($"[CookingSourceExpand] ★无人机交易来源 configId={cid} name={srcName} ownerId={oid}");
+            CookingSourceExpandPlugin.Log.LogInfo($"[CookingSourceExpand] ★无人机交易来源 configId={cid} name={srcName} ownerId={oid} IsFridge=true");
             return true;
         }
 
@@ -603,27 +681,77 @@ namespace CookingSourceExpand
         // 只用 AppendShelvesToToolTableOpenPatch 在安全上下文里构建的缓存。
         internal static class WorkbenchCrossSourcePatch
         {
-            static void Prefix(Bush.Dictionary<int, int> materialNeeded, ref long[] ownerIds)
+            // 真实签名（探针实测定）：SelectItemsForRecipe(State_Data_Item, Dictionary<int,int>, Int64[])
+            // ownerIds 是值传递、非 ref，无法在此扩容来源。跨柜取料实际上由 CabinetBags 扩展
+            // （Ac_ToolTable_Open 的 Prefix）承担。此处 Prefix 做无条件诊断：无论是否命中都打印
+            // 游戏传入的完整 ownerIds 与所需材料，确认官方取料到底在哪个环节断掉。不修改任何东西。
+            static void Prefix(CookingUI.State_Data_Item itemState, Bush.Dictionary<int, int> materialNeeded, Int64[] ownerIds)
             {
                 try
                 {
                     var cached = CookingSourceExpandPlugin.WorkbenchSourceOwners;
-                    if (ownerIds == null || cached == null || cached.Length == 0) return;
+                    int olen = ownerIds == null ? 0 : ownerIds.Length;
+                    var sb = new System.Text.StringBuilder();
+                    if (ownerIds != null)
+                        foreach (var o in ownerIds) sb.Append(o).Append(',');
 
-                    var set = new System.Collections.Generic.List<long>(ownerIds.Length + cached.Length);
-                    foreach (var id in ownerIds) if (id != 0) set.Add(id);
-                    foreach (var id in cached) if (id != 0 && !set.Contains(id)) set.Add(id);
+                    var msb = new System.Text.StringBuilder();
+                    if (materialNeeded != null)
+                        foreach (var kv in materialNeeded) msb.Append(kv.Key).Append('x').Append(kv.Value).Append(',');
 
-                    if (set.Count > ownerIds.Length)
-                    {
-                        int appended = set.Count - ownerIds.Length;
-                        ownerIds = set.ToArray();
-                        CookingSourceExpandPlugin.Log.LogInfo($"[CookingSourceExpand] 工作台跨面板取料：来源已扩为 {ownerIds.Length} 个（新增 {appended}）");
-                    }
+                    int hit = 0;
+                    if (cached != null && ownerIds != null)
+                        foreach (var o in cached)
+                            for (int i = 0; i < ownerIds.Length; i++)
+                                if (ownerIds[i] == o) { hit++; break; }
+
+                    CookingSourceExpandPlugin.Log.LogInfo($"[CookingSourceExpand] 「点配方取料」被调用 ownerIds[{olen}]={sb} 储物来源命中={hit}/{(cached == null ? 0 : cached.Length)} 需求={msb}");
                 }
                 catch (Exception e)
                 {
-                    CookingSourceExpandPlugin.Log.LogInfo($"[CookingSourceExpand] 工作台跨面板 Prefix err {e.GetType().Name}");
+                    CookingSourceExpandPlugin.Log.LogInfo($"[CookingSourceExpand] SelectItemsForRecipe Prefix 诊断 err {e.GetType().Name}");
+                }
+            }
+
+            // 材料不足提示：配方所需材料在本次可用来源（玩家背包 + 全部储物家具，来自打开工作台时的预缓存）
+            // 里凑不齐时，日志列出还差哪些。只读缓存、不做任何世界枚举/修改，纯提示不阻塞制作。
+            static void Postfix(Bush.Dictionary<int, int> materialNeeded)
+            {
+                try
+                {
+                    if (materialNeeded == null) return;
+                    var cache = CookingBagPatch.WorkbenchAvailableMaterials;
+                    if (cache == null || cache.Count == 0) return;
+
+                    var missing = new System.Collections.Generic.Dictionary<int, int>();
+                    foreach (var kv in materialNeeded)
+                    {
+                        int need = kv.Value;
+                        if (need <= 0) continue;
+                        int have = 0;
+                        foreach (var map in cache.Values)
+                        {
+                            if (map == null) continue;
+                            int c;
+                            if (map.TryGetValue(kv.Key, out c)) have += c;
+                        }
+                        int diff = need - have;
+                        if (diff > 0)
+                        {
+                            int cur;
+                            if (!missing.TryGetValue(kv.Key, out cur)) missing[kv.Key] = diff;
+                            else if (diff > cur) missing[kv.Key] = diff;
+                        }
+                    }
+                    if (missing.Count == 0) return;
+
+                    var parts = new System.Collections.Generic.List<string>();
+                    foreach (var m in missing) parts.Add($"{m.Key}(物品id)×{m.Value}");
+                    CookingSourceExpandPlugin.Log.LogWarning($"[CookingSourceExpand] ⚠ 工作台材料不足，还差 {missing.Count} 项 → {string.Join("，", parts)}");
+                }
+                catch (Exception e)
+                {
+                    CookingSourceExpandPlugin.Log.LogInfo($"[CookingSourceExpand] 工作台材料不足提示 err {e.GetType().Name}");
                 }
             }
         }

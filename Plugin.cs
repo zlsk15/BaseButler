@@ -24,6 +24,7 @@ namespace CookingSourceExpand
             WebViewHtmlPatcher.ApplyAll(Log);
             var harmony = new Harmony(PluginInfo.GUID);
             SafePatch.ApplyAll(harmony);
+            RuntimeProbe.Dump();
             Log.LogInfo($"{PluginInfo.Name} v{PluginInfo.Version} 已加载：烹饪（灶台/火炉）面板食材来源已扩展为所有带储物背包的家具。");
         }
     }
@@ -32,7 +33,7 @@ namespace CookingSourceExpand
     {
         public const string GUID = "com.cookingsourceexpand.mod";
         public const string Name = "CookingSourceExpand";
-        public const string Version = "v1.4.3";
+        public const string Version = "v1.5.6";
     }
 
     /// <summary>
@@ -112,9 +113,15 @@ namespace CookingSourceExpand
                      typeof(CookingBagPatch.AppendShelvesToToolTableOpenPatch), "Prefix", "工作台来源");
             TryPatch(typeof(CookingUI.Ac_TradeUI_SetContainerTabs), "SendAction",
                      typeof(CookingBagPatch.AppendShelvesToTradeContainerTabsPatch), "Prefix", "无人机交易来源");
-            TryPatchExact(typeof(CookingUI.Reducer_Web_ToolTable), "SelectItemsForRecipe",
-                     new Type[] { typeof(Il2CppSystem.Collections.Generic.Dictionary<int, int>), typeof(long[]).MakeByRefType() },
-                     typeof(CookingBagPatch.WorkbenchCrossSourcePatch), "工作台跨面板取料");
+            TryPatch(typeof(CookingUI.WebUILayer), "OnPageMessage",
+                     typeof(LogBridgePatch), "Prefix", "前端诊断日志桥");
+            // 无人机 TradeUI 走 ShowUI→RebuildBagTabs（实测不从 SetContainerTabs 进入）
+            TryPatchByNameAll(typeof(CookingUI.Ac_TradeUI_ShowUI), "SendAction",
+                     typeof(TradeSourceInjection.ShowUICachePatch), "无人机来源缓存");
+            TryPatchByNameAll(typeof(CookingUI.Reducer_Web_TradeUI), "RebuildBagTabs",
+                     typeof(TradeSourceInjection.RebuildTabsPatch), "无人机来源注入");
+            // SelectItemsForRecipe 位于 reducer（配方选择热路径），注入读写 Il2Cpp 字典会冻结面板，
+            // 已整体撤销该路径的补丁；跨柜取料由 CabinetBags 扩展（工作台来源）承担。
         }
 
         private static void TryPatch(Type targetType, string methodName, Type patchType, string patchMethod, string label)
@@ -153,57 +160,32 @@ namespace CookingSourceExpand
             var pre = patchType.GetMethod("Prefix",
                 System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public
                 | System.Reflection.BindingFlags.NonPublic);
-            if (pre == null)
+            var post = patchType.GetMethod("Postfix",
+                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public
+                | System.Reflection.BindingFlags.NonPublic);
+            if (pre == null && post == null)
             {
-                CookingSourceExpandPlugin.Log.LogWarning($"[CookingSourceExpand] 找不到补丁方法 {patchType.FullName}.Prefix，跳过「{label}」。");
+                CookingSourceExpandPlugin.Log.LogWarning($"[CookingSourceExpand] 找不到补丁方法 {patchType.FullName}.Prefix/Postfix，跳过「{label}」。");
                 return;
             }
+            int attached = 0;
             foreach (var m in targetType.GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static))
             {
                 if (m.Name != methodName) continue;
                 try
                 {
-                    _harmony.Patch(m, prefix: new HarmonyMethod(pre));
-                    CookingSourceExpandPlugin.Log.LogInfo($"[CookingSourceExpand] ✓ 已挂载补丁：「{label}」 → {targetType.FullName}.{methodName}");
+                    _harmony.Patch(m,
+                        prefix: pre == null ? null : new HarmonyMethod(pre),
+                        postfix: post == null ? null : new HarmonyMethod(post));
+                    attached++;
+                    CookingSourceExpandPlugin.Log.LogInfo($"[CookingSourceExpand] ✓ 已挂载补丁：「{label}」 → {targetType.FullName}.{methodName}（重载 {m}）");
                 }
                 catch (Exception e)
                 {
                     CookingSourceExpandPlugin.Log.LogWarning($"[CookingSourceExpand] 「{label}」跳过不兼容重载 {methodName}: {e.Message}");
                 }
             }
-        }
-
-        /// <summary>按精确签名挂载 Prefix + Postfix（避免 ref/ByRef 差异导致失配或误挂其它重载）。</summary>
-        private static void TryPatchExact(Type targetType, string methodName, Type[] argTypes, Type patchType, string label)
-        {
-            var pre = patchType.GetMethod("Prefix",
-                System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public
-                | System.Reflection.BindingFlags.NonPublic);
-            if (pre == null)
-            {
-                CookingSourceExpandPlugin.Log.LogWarning($"[CookingSourceExpand] 找不到补丁方法 {patchType.FullName}.Prefix，跳过「{label}」。");
-                return;
-            }
-            try
-            {
-                var m = AccessTools.Method(targetType, methodName, argTypes);
-                if (m == null)
-                {
-                    CookingSourceExpandPlugin.Log.LogWarning($"[CookingSourceExpand] 未找到「{label}」精确签名，跳过。");
-                    return;
-                }
-                var post = patchType.GetMethod("Postfix",
-                    System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public
-                    | System.Reflection.BindingFlags.NonPublic);
-                _harmony.Patch(m,
-                    prefix: new HarmonyMethod(pre),
-                    postfix: post == null ? null : new HarmonyMethod(post));
-                CookingSourceExpandPlugin.Log.LogInfo($"[CookingSourceExpand] ✓ 已挂载补丁：「{label}」 → {targetType.FullName}.{methodName}");
-            }
-            catch (Exception e)
-            {
-                CookingSourceExpandPlugin.Log.LogWarning($"[CookingSourceExpand] 「{label}」挂载异常：{e.Message}");
-            }
+            if (attached == 0) CookingSourceExpandPlugin.Log.LogWarning($"[CookingSourceExpand] 「{label}」未找到任何可挂载重载，自动停用。");
         }
     }
 }
