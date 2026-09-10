@@ -24,7 +24,6 @@ namespace CookingSourceExpand
             WebViewHtmlPatcher.ApplyAll(Log);
             var harmony = new Harmony(PluginInfo.GUID);
             SafePatch.ApplyAll(harmony);
-            RuntimeProbe.Dump();
             Log.LogInfo($"{PluginInfo.Name} v{PluginInfo.Version} 已加载：烹饪（灶台/火炉）面板食材来源已扩展为所有带储物背包的家具。");
         }
     }
@@ -33,7 +32,7 @@ namespace CookingSourceExpand
     {
         public const string GUID = "com.cookingsourceexpand.mod";
         public const string Name = "CookingSourceExpand";
-        public const string Version = "v1.5.6";
+        public const string Version = "v1.6.0";
     }
 
     /// <summary>
@@ -111,11 +110,10 @@ namespace CookingSourceExpand
                      typeof(CookingBagPatch.AppendShelvesToHandMadeBagListPatch), "Prefix", "手工制作来源");
             TryPatch(typeof(CookingUI.Ac_ToolTable_Open), "SendAction",
                      typeof(CookingBagPatch.AppendShelvesToToolTableOpenPatch), "Prefix", "工作台来源");
-            TryPatch(typeof(CookingUI.Ac_TradeUI_SetContainerTabs), "SendAction",
-                     typeof(CookingBagPatch.AppendShelvesToTradeContainerTabsPatch), "Prefix", "无人机交易来源");
             TryPatch(typeof(CookingUI.WebUILayer), "OnPageMessage",
                      typeof(LogBridgePatch), "Prefix", "前端诊断日志桥");
-            // 无人机 TradeUI 走 ShowUI→RebuildBagTabs（实测不从 SetContainerTabs 进入）
+            // 无人机 TradeUI 走 ShowUI→RebuildBagTabs（实测不从 SetContainerTabs 进入，v1.5.3 已确认）
+            // 来源注入统一由 TradeSourceInjection 的 ShowUI 缓存 + RebuildBagTabs 注入承担，IsFridge 一律 false。
             TryPatchByNameAll(typeof(CookingUI.Ac_TradeUI_ShowUI), "SendAction",
                      typeof(TradeSourceInjection.ShowUICachePatch), "无人机来源缓存");
             TryPatchByNameAll(typeof(CookingUI.Reducer_Web_TradeUI), "RebuildBagTabs",
