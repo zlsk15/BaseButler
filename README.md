@@ -1,6 +1,6 @@
 # Survival Log — Cooking Source Expand (食材来源扩展)
 
-当前版本：**v1.5.6** · Latest: v1.5.6
+当前版本：**v1.6.0** · Latest: v1.6.0
 
 一个《生存日志》(Survival Log) 的 BepInEx 6 插件，把**烹饪面板**、**手工制作界面**、**无人机交易界面**和**工作台**的食材/材料来源扩展为基地内所有带储物功能的家具。
 A BepInEx 6 plugin for Survival Log that expands the **cooking panel**, **handcrafting UI**, **drone-trade UI** and **workbench** source containers to every storage-capable furniture in your base.
@@ -110,6 +110,10 @@ BepInEx 6 + dotnet runtime are bundled — no extra setup needed.
 - Back up your save before use.
 
 ## 更新日志 Changelog
+
+### v1.6.0（清理优化版）
+- **清理发布版诊断代码**：移除从未挂载的 `TradeRouteDebug` 探针与启动枚举的 `RuntimeProbe`，DLL 减小约 6KB，启动日志更干净，运行期行为不变。
+- **修复无人机来源 IsFridge 分裂隐患**：删除从未被触发的 `SetContainerTabs` 旧补丁，无人机来源统一由实测生效的 `ShowUI → RebuildBagTabs` 注入（非冰柜来源一律 `IsFridge=false`），消除「游戏切换路径时普通储物柜被渲染成冰柜冻结模板」的隐患。
 
 ### v1.5.6（对比 v1.5.0）
 - **取料来源补齐「工作台抽屉」**：此前工作台本身抽屉里的材料不会被自动取用；本版将抽屉正式纳入取料来源，抽屉里的料也会被自动搬走补齐配方。
