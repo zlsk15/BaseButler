@@ -87,9 +87,25 @@ Automatically excluded: doors, windows, security doors/windows, cars, drones, lu
 
 ## 安装 Installation
 
-1. In Steam, right-click *Survival Log* → Manage → Browse local files (locate `SurvivalLog.exe`).
-2. Extract the zip and copy **all contents** (`winhttp.dll`, `doorstop_config.ini`, `BepInEx`, `dotnet`) into the game root folder, overwrite when asked.
-3. Launch the game via Steam. Open the stove/furnace cooking panel or the handcrafting UI — multiple storage sources will now be selectable.
+> **Important — install the WHOLE zip, not just the .dll.**
+> This package already bundles the full BepInEx 6 framework. If you drop only `CookingSourceExpand.dll` somewhere, the game will never load it. Extract **everything** and place it correctly in one go.
+
+1. In Steam, right-click *Survival Log* → Manage → Browse local files. This opens the **game root folder** — the one containing `SurvivalLog.exe` (e.g. `...\Steam\steamapps\common\Survival Log\`). **Everything goes into this folder.**
+2. Extract the zip and copy **all** of the following into the game root folder (merge / overwrite when asked). After installing, confirm all of these are present:
+   - `winhttp.dll`
+   - `doorstop_config.ini`
+   - `BepInEx\` (the whole folder, incl. `plugins\CookingSourceExpand.dll`)
+   - `dotnet\` (the whole folder)
+   When done, the game root should show **both `SurvivalLog.exe` and the `BepInEx\` folder** side by side.
+3. Launch the game via Steam. **The first launch takes 1–3 minutes longer** (BepInEx builds its interop layer) — this is normal, so wait, don't assume it failed.
+4. In-game after loading a save, open the stove/furnace cooking panel or the handcrafting UI. If you see **multiple selectable storage sources** (boxes / cabinets / fridges), it works.
+
+**How to verify it's working:** you see several storage tabs in the cooking/crafting UI **and** a `BepInEx\LogOutput.log` file appears in the game root.
+
+**Installed it but nothing happens? Check these:**
+1. Make sure `BepInEx\` and `winhttp.dll` are **in the same folder as `SurvivalLog.exe`** (the most common mistake: placed into a subfolder, or only the .dll was copied).
+2. Confirm you let the first launch finish the 1–3 min interop generation (does a `BepInEx\` folder show up?).
+3. Open `BepInEx\LogOutput.log` and search for `CookingSourceExpand` to check whether the plugin loaded.
 
 BepInEx 6 + dotnet runtime are bundled — no extra setup needed.
 
