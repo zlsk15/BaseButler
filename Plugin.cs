@@ -8,23 +8,38 @@ using BepInEx.Unity.IL2CPP;
 using HarmonyLib;
 using CookingUI = GameCore.HotUpdate.ReduxUI;
 
-namespace CookingSourceExpand
+namespace BaseButler.SourceExpand
 {
-    [BepInPlugin(PluginInfo.GUID, PluginInfo.Name, PluginInfo.Version)]
-    [BepInProcess("SurvivalLog.exe")]
-    public class CookingSourceExpandPlugin : BasePlugin
+    public class CookingSourceExpandPlugin
     {
-        internal static new ManualLogSource Log;
+        internal static ManualLogSource Log;
         internal static long[] WorkbenchSourceOwners; // 工作台跨面板取料来源缓存，仅在打开工作台的安全上下文枚举填充
+        /// <summary>点配方取料(SendAction/SelectItemsForRecipe)的诊断日志开关。取料是用户热路径，默认关闭避免无谓字符串构建。</summary>
+        internal static bool SelectRecipeDiagnostics;
 
-        public override void Load()
+        /// <summary>由 BaseButler 主入口调用，注册「来源扩展」全部补丁。</summary>
+        public static void Init(BepInEx.Configuration.ConfigFile cfg, ManualLogSource log, Harmony harmony)
         {
-            Log = base.Log;
-            SourceFilterConfig.Load(Config);
+            Log = log;
+            SourceFilterConfig.Load(cfg);
+            try
+            {
+                SelectRecipeDiagnostics = cfg.Bind<bool>("Sources", "SelectRecipeDiagnostics", false,
+                    "开启后打印『点配方取料』的完整来源 ownerIds 与所需材料诊断；默认关闭，仅在排查取料问题时打开。").Value;
+            }
+            catch { }
+            // ★方案A吸收：联动储物柜是否作为"烹饪可直取袋"放行
+            try
+            {
+                CookingBagLinkPatch.Enabled = cfg.Bind<bool>("Sources", "TreatAsCookingBag", true,
+                    "把联动储物柜当作『烹饪可直取袋』放行（IsCookingFurnitureBag）；游戏做菜时可直接从这些柜子直取食材。").Value;
+                Log.LogInfo("[BaseButler] 烹饪联动储物柜直取(IsCookingFurnitureBag)："
+                    + (CookingBagLinkPatch.Enabled ? "已开启" : "已关闭"));
+            }
+            catch { }
             WebViewHtmlPatcher.ApplyAll(Log);
-            var harmony = new Harmony(PluginInfo.GUID);
             SafePatch.ApplyAll(harmony);
-            Log.LogInfo($"{PluginInfo.Name} v{PluginInfo.Version} 已加载：烹饪（灶台/火炉）面板食材来源已扩展为所有带储物背包的家具。");
+            Log.LogInfo($"[BaseButler] 来源扩展已开启：烹饪（灶台/火炉）面板食材来源已扩展为所有带储物背包的家具。");
         }
     }
 
@@ -112,6 +127,12 @@ namespace CookingSourceExpand
                      typeof(CookingBagPatch.AppendShelvesToToolTableOpenPatch), "Prefix", "工作台来源");
             TryPatch(typeof(CookingUI.WebUILayer), "OnPageMessage",
                      typeof(LogBridgePatch), "Prefix", "前端诊断日志桥");
+            // ★方案A吸收：把"我们已接入的联动储物柜"放行为烹饪可直取袋（IsCookingFurnitureBag）
+            if (CookingBagLinkPatch.Enabled)
+            {
+                TryPatchByNameAll(typeof(GameCore.HotUpdate.Battle.Logic.ItemManager), "IsCookingFurnitureBag",
+                         typeof(CookingBagLinkPatch), "烹饪袋直取放行");
+            }
             // 无人机 TradeUI 走 ShowUI→RebuildBagTabs（实测不从 SetContainerTabs 进入，v1.5.3 已确认）
             // 来源注入统一由 TradeSourceInjection 的 ShowUI 缓存 + RebuildBagTabs 注入承担，IsFridge 一律 false。
             TryPatchByNameAll(typeof(CookingUI.Ac_TradeUI_ShowUI), "SendAction",
@@ -167,7 +188,12 @@ namespace CookingSourceExpand
                 return;
             }
             int attached = 0;
-            foreach (var m in targetType.GetMethods(System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static))
+            // 注意：IsCookingFurnitureBag 是实例方法（非 static），若只扫 Static 会漏掉导致补丁静默未挂载。
+            // 改用 Instance|Static|NonPublic 全量按名扫，DeclaredOnly 避免误绑基类同名方法。
+            foreach (var m in targetType.GetMethods(
+                System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic
+                | System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.Static
+                | System.Reflection.BindingFlags.DeclaredOnly))
             {
                 if (m.Name != methodName) continue;
                 try

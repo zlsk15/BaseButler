@@ -1,7 +1,8 @@
 using System;
 using System.Text.Json;
+using BaseButler.Stack;
 
-namespace CookingSourceExpand
+namespace BaseButler.SourceExpand
 {
     /// <summary>
     /// 前端诊断日志桥：把工作台 HTML 里 JS 的 dbg() 诊断行，经 WebUI 层收敛的 JS→C# 消息入口
@@ -28,6 +29,35 @@ namespace CookingSourceExpand
             {
                 string page = source ?? "";
                 bool isDebug = messageType == "CSE_DEBUG";
+
+                // 按需拆取：堆叠扩展后材料能叠多个，一键制作整堆搬会多搬/占格。
+                // 前端在堆超量时改发 BB_SPLIT_MOVE，这里转成 C# 拆 count 个到工作台。
+                if (messageType == "BB_SPLIT_MOVE")
+                {
+                    try
+                    {
+                        long from = 0, to = 0; long id = 0; int cfg = 0, cnt = 0;
+                        if (!string.IsNullOrEmpty(jsonData))
+                        {
+                            using (var dd = JsonDocument.Parse(jsonData))
+                            {
+                                var r = dd.RootElement;
+                                if (r.TryGetProperty("fromOwnerId", out var a) && a.ValueKind == JsonValueKind.Number) from = a.GetInt64();
+                                if (r.TryGetProperty("toOwnerId", out var b) && b.ValueKind == JsonValueKind.Number) to = b.GetInt64();
+                                if (r.TryGetProperty("itemId", out var c) && c.ValueKind == JsonValueKind.Number) id = c.GetInt64();
+                                if (r.TryGetProperty("configId", out var e) && e.ValueKind == JsonValueKind.Number) cfg = e.GetInt32();
+                                if (r.TryGetProperty("count", out var d) && d.ValueKind == JsonValueKind.Number) cnt = d.GetInt32();
+                            }
+                        }
+                        if (cnt > 0 && from != 0 && (id > 0 || cfg > 0))
+                            StackSplit.TrySplitMove(from, id, cfg, cnt, to);
+                    }
+                    catch (Exception e)
+                    {
+                        CookingSourceExpandPlugin.Log.LogWarning("[按需拆取] BB_SPLIT_MOVE 解析失败: " + e.Message);
+                    }
+                    return false; // 私有事件，完成即拦截，不必再走 reducer 路由
+                }
 
                 // CSE_DEBUG 无条件转储（这是我们的诊断正文）
                 var text = jsonData;

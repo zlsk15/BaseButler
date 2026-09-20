@@ -5,7 +5,7 @@ using GameCore.HotUpdate.Battle.Logic;
 using CookingUI = GameCore.HotUpdate.ReduxUI;
 using HotGame = GameCore.HotUpdate;
 
-namespace CookingSourceExpand
+namespace BaseButler.SourceExpand
 {
     /// <summary>
     /// 让烹饪（灶台/火炉做饭）面板可调用的食材来源容器，从"只有冰箱/冷柜"扩展为
@@ -84,6 +84,34 @@ namespace CookingSourceExpand
             "床",
         };
 
+        /// <summary>
+        /// 上一轮来源枚举得到的"当前角色家联动储物柜" ownerId 缓存。
+        /// 供 IsCookingFurnitureBag Postfix 判定"这个柜子能不能作为烹饪可直取袋"放行用。
+        /// 在每次 EnumerateHomeSources（打开烹饪/手作/工作台面板时）重建，与官方"打开面板重建来源"语义一致。
+        /// </summary>
+        internal static readonly System.Collections.Generic.HashSet<long> HomeStorageOwners =
+            new System.Collections.Generic.HashSet<long>();
+
+        /// <summary>该 ownerId 是否是我们已接入的联动储物柜（给 IsCookingFurnitureBag 放行用）。</summary>
+        internal static bool IsLinkedStorageOwner(long ownerId)
+        {
+            if (ownerId == 0) return false;
+            return HomeStorageOwners.Contains(ownerId);
+        }
+
+        private static void SyncHomeOwners(
+            System.Collections.Generic.List<System.Collections.Generic.KeyValuePair<long, int>> sources)
+        {
+            HomeStorageOwners.Clear();
+            if (sources != null)
+            {
+                foreach (var kv in sources)
+                {
+                    if (kv.Key != 0) HomeStorageOwners.Add(kv.Key);
+                }
+            }
+        }
+
         private static bool IsExcluded(int configId)
         {
             foreach (var id in ExcludedSourceConfigIds)
@@ -115,7 +143,19 @@ namespace CookingSourceExpand
             return false;
         }
 
+        // 家具名解析结果缓存：每次开面板都对每个来源柜做 ConfigManager 反射很浪费，名字不会改变
+        private static readonly System.Collections.Generic.Dictionary<int, string> FurnNameCache =
+            new System.Collections.Generic.Dictionary<int, string>();
+
         private static string TryResolveName(int configId)
+        {
+            if (FurnNameCache.TryGetValue(configId, out var c)) return c;
+            var name = ResolveFurnName(configId);
+            FurnNameCache[configId] = name;
+            return name;
+        }
+
+        private static string ResolveFurnName(int configId)
         {
             try
             {
@@ -129,21 +169,6 @@ namespace CookingSourceExpand
             catch (Exception) { }
             return "";
         }
-
-        private static readonly int[] BoxConfigIds = {
-    // 打工人角色家（基础白名单）
-    201, 202, 203, 204, 215, 872, 875,
-    9056, 9057, 9092, 9095, 9096, 9099, 9084, 9159, 9168,
-    9171, 9172, 9173, 15001, 307, 308, 321,
-    80011, 80156, 80157, 80159, 80160,
-    // 女大学生角色家实测：储物柜/架/箱/冰箱/书架/橱柜/吊篮/酿酒桶/置物架
-    // 每个角色同一类家具的 configId 可能不同，故并入以保证工作台跨面板取料可用
-    10001,
-    80014, 80022, 80032, 80042, 80047, 80049, 80062, 80068,
-    80077, 80081, 80083, 80084, 80086, 80097,
-    80110, 80119, 80121, 80122, 80123, 80125, 80126, 80128,
-    80130, 80132, 80140, 80141,
-};
 
         /// <summary>
         /// 工作台"一键取料/材料不足提示"用的可用材料预缓存：ownerId -> { itemConfigId : 数量 }。
@@ -220,6 +245,7 @@ namespace CookingSourceExpand
                             if (oid != 0 && cid != 0) result.Add(new System.Collections.Generic.KeyValuePair<long, int>(oid, cid));
                         }
                         CookingSourceExpandPlugin.Log.LogInfo($"[CookingSourceExpand] ★按角色家枚举：GetFurnituresWithBag(homeMap={homeMap}) -> {result.Count} 个");
+                        SyncHomeOwners(result);
                         return result;
                     }
                 }
@@ -246,19 +272,71 @@ namespace CookingSourceExpand
                         added++;
                     }
                     CookingSourceExpandPlugin.Log.LogInfo($"[CookingSourceExpand] ★全局兜底枚举 homeMap={homeMap} -> {added} 个");
+                    SyncHomeOwners(result);
                 }
             }
             catch (Exception) { }
             return result;
         }
 
-        private static bool IsBoxConfig(int configId)
+        private static bool TryAddSource(long oid, int cid,
+                                         long excludeOwnerId, int excludeConfigId,
+                                         Bush.List<HotGame.CookingFridgeInfo> targetFridge,
+                                         Bush.List<CookingUI.Data_Bag> targetBag,
+                                         Bush.List<Int32> targetConfigs,
+                                         Bush.List<Boolean> targetLocked,
+                                         HotGame.Battle.Logic.ItemManager itemManager)
         {
-            foreach (var id in BoxConfigIds)
+            if (oid == 0 || cid == 0) return false;
+            if (oid == excludeOwnerId || cid == excludeConfigId) return false;
+            if (IsExcluded(cid)) return false;
+            if (!SourceFilterConfig.IsAllowed(cid)) return false;
+
+            string srcName = TryResolveName(cid);
+            if (IsExcludedName(srcName))
             {
-                if (id == configId) return true;
+                CookingSourceExpandPlugin.Log.LogDebug($"[CookingSourceExpand] ★排除 configId={cid} name={srcName} ownerId={oid}");
+                return false;
             }
-            return false;
+
+            bool exists = false;
+            if (targetFridge != null)
+            {
+                foreach (var fi in targetFridge)
+                {
+                    if (fi != null && fi.OwnerId == oid) { exists = true; break; }
+                }
+            }
+            else if (targetBag != null)
+            {
+                foreach (var b in targetBag)
+                {
+                    if (b != null && b.OwnerId == oid) { exists = true; break; }
+                }
+            }
+            if (exists) return false;
+
+            if (targetFridge != null)
+            {
+                var fi = new HotGame.CookingFridgeInfo();
+                fi.OwnerId = oid;
+                fi.FurnitureConfigId = cid;
+                fi.Locked = false;
+                targetFridge.Add(fi);
+            }
+            else if (targetBag != null)
+            {
+                var bag = new CookingUI.Data_Bag();
+                bag.OwnerId = oid;
+                bag.BagConfigId = cid;
+                bag.ExtraBurden = 0;
+                bag.ItemList = BuildItemList(itemManager, oid);
+                targetBag.Add(bag);
+                if (targetConfigs != null) targetConfigs.Add(cid);
+                if (targetLocked != null) targetLocked.Add(false);
+            }
+            CookingSourceExpandPlugin.Log.LogDebug($"[CookingSourceExpand] ★来源 configId={cid} name={srcName} ownerId={oid}");
+            return true;
         }
 
         /// <summary>
@@ -327,66 +405,6 @@ namespace CookingSourceExpand
             {
                 return true;
             }
-        }
-
-        private static bool TryAddSource(long oid, int cid,
-                                         long excludeOwnerId, int excludeConfigId,
-                                         Bush.List<HotGame.CookingFridgeInfo> targetFridge,
-                                         Bush.List<CookingUI.Data_Bag> targetBag,
-                                         Bush.List<Int32> targetConfigs,
-                                         Bush.List<Boolean> targetLocked,
-                                         HotGame.Battle.Logic.ItemManager itemManager)
-        {
-            if (oid == 0 || cid == 0) return false;
-            if (oid == excludeOwnerId || cid == excludeConfigId) return false;
-            if (IsExcluded(cid)) return false;
-            if (!SourceFilterConfig.IsAllowed(cid)) return false;
-
-            string srcName = TryResolveName(cid);
-            if (IsExcludedName(srcName))
-            {
-                CookingSourceExpandPlugin.Log.LogInfo($"[CookingSourceExpand] ★排除 configId={cid} name={srcName} ownerId={oid}");
-                return false;
-            }
-
-            bool exists = false;
-            if (targetFridge != null)
-            {
-                foreach (var fi in targetFridge)
-                {
-                    if (fi != null && fi.OwnerId == oid) { exists = true; break; }
-                }
-            }
-            else if (targetBag != null)
-            {
-                foreach (var b in targetBag)
-                {
-                    if (b != null && b.OwnerId == oid) { exists = true; break; }
-                }
-            }
-            if (exists) return false;
-
-            if (targetFridge != null)
-            {
-                var fi = new HotGame.CookingFridgeInfo();
-                fi.OwnerId = oid;
-                fi.FurnitureConfigId = cid;
-                fi.Locked = false;
-                targetFridge.Add(fi);
-            }
-            else if (targetBag != null)
-            {
-                var bag = new CookingUI.Data_Bag();
-                bag.OwnerId = oid;
-                bag.BagConfigId = cid;
-                bag.ExtraBurden = 0;
-                bag.ItemList = BuildItemList(itemManager, oid);
-                targetBag.Add(bag);
-                if (targetConfigs != null) targetConfigs.Add(cid);
-                if (targetLocked != null) targetLocked.Add(false);
-            }
-            CookingSourceExpandPlugin.Log.LogInfo($"[CookingSourceExpand] ★来源 configId={cid} name={srcName} ownerId={oid}");
-            return true;
         }
 
         private static Bush.List<CookingUI.Data_Item> BuildItemList(HotGame.Battle.Logic.ItemManager itemManager, Int64 ownerId)
@@ -487,7 +505,7 @@ namespace CookingSourceExpand
             string srcName = TryResolveName(cid);
             if (IsExcludedName(srcName))
             {
-                CookingSourceExpandPlugin.Log.LogInfo($"[CookingSourceExpand] ★排除 configId={cid} name={srcName} ownerId={oid}");
+                CookingSourceExpandPlugin.Log.LogDebug($"[CookingSourceExpand] ★排除 configId={cid} name={srcName} ownerId={oid}");
                 return false;
             }
 
@@ -501,7 +519,7 @@ namespace CookingSourceExpand
             tc.FurnitureConfigId = cid;
             target.Add(tc);
 
-            CookingSourceExpandPlugin.Log.LogInfo($"[CookingSourceExpand] ★手工制作来源 configId={cid} name={srcName} ownerId={oid}");
+            CookingSourceExpandPlugin.Log.LogDebug($"[CookingSourceExpand] ★手工制作来源 configId={cid} name={srcName} ownerId={oid}");
             return true;
         }
 
@@ -616,10 +634,12 @@ namespace CookingSourceExpand
         {
             // 真实签名（探针实测定）：SelectItemsForRecipe(State_Data_Item, Dictionary<int,int>, Int64[])
             // ownerIds 是值传递、非 ref，无法在此扩容来源。跨柜取料实际上由 CabinetBags 扩展
-            // （Ac_ToolTable_Open 的 Prefix）承担。此处 Prefix 做无条件诊断：无论是否命中都打印
-            // 游戏传入的完整 ownerIds 与所需材料，确认官方取料到底在哪个环节断掉。不修改任何东西。
+            // （Ac_ToolTable_Open 的 Prefix）承担。此处 Prefix 做纯诊断：命中与否都打印游戏传入的
+            // ownerIds 与所需材料，确认官方取料在哪个环节断掉。不修改任何东西。
+            // 注意这是取料热路径，无条件构建字符串会造成无谓开销，故仅在配置开启诊断时才记录。
             static void Prefix(CookingUI.State_Data_Item itemState, Bush.Dictionary<int, int> materialNeeded, Int64[] ownerIds)
             {
+                if (!CookingSourceExpandPlugin.SelectRecipeDiagnostics) return;
                 try
                 {
                     var cached = CookingSourceExpandPlugin.WorkbenchSourceOwners;
@@ -638,11 +658,11 @@ namespace CookingSourceExpand
                             for (int i = 0; i < ownerIds.Length; i++)
                                 if (ownerIds[i] == o) { hit++; break; }
 
-                    CookingSourceExpandPlugin.Log.LogInfo($"[CookingSourceExpand] 「点配方取料」被调用 ownerIds[{olen}]={sb} 储物来源命中={hit}/{(cached == null ? 0 : cached.Length)} 需求={msb}");
+                    CookingSourceExpandPlugin.Log.LogDebug($"[CookingSourceExpand] 「点配方取料」被调用 ownerIds[{olen}]={sb} 储物来源命中={hit}/{(cached == null ? 0 : cached.Length)} 需求={msb}");
                 }
                 catch (Exception e)
                 {
-                    CookingSourceExpandPlugin.Log.LogInfo($"[CookingSourceExpand] SelectItemsForRecipe Prefix 诊断 err {e.GetType().Name}");
+                    CookingSourceExpandPlugin.Log.LogDebug($"[CookingSourceExpand] SelectItemsForRecipe Prefix 诊断 err {e.GetType().Name}");
                 }
             }
 
@@ -691,5 +711,32 @@ namespace CookingSourceExpand
 
         // 注：储物面板跨柜互通（吊篮/柜子面板内切换其它储物容器）因受 WebView 前端面板限制
         // 未能稳定实现，已从发布版移除，仅在内部迭代中使用。
+    }
+
+    /// <summary>
+    /// ★方案A吸收（参考 SLCookLink CookingFurnitureBagLinkPatch）：
+    /// 游戏用 ItemManager.IsCookingFurnitureBag(owner) 判断"做菜时能不能从这个袋子直取"，
+    /// 冰箱/灶台类是 true，而储物架/柜子是 false。烹饪面板页签虽被我们挂上，但原生取料链路
+    /// 一问到"这台柜子能直取吗"就被拒（页签看得见、点菜谱取不到料）。
+    /// 本 Postfix 把"我们已接入的联动储物柜"的回答改成 true，让原生取料链路认账。
+    ///
+    /// 为什么安全：只改这个布尔返回值（"能不能用于烹饪"的判断），不动任何物品数据、不改袋归属/坐标。
+    /// 关掉 treat-as-cooking-bag 开关即恢复原版判断。
+    /// </summary>
+    internal static class CookingBagLinkPatch
+    {
+        /// <summary>是否把联动储物柜当作"烹饪可直取袋"放行（由 CookingSourceExpandPlugin 按要求读取配置）。</summary>
+        internal static bool Enabled = true;
+
+        internal static void Postfix(long ownerId, ref bool __result)
+        {
+            try
+            {
+                if (!Enabled || __result) return;                     // 本来就是 true 或未开启 → 不动
+                if (!CookingBagPatch.IsLinkedStorageOwner(ownerId)) return; // 非联动柜 → 不动
+                __result = true;                                      // 联动柜 → 放行为"可直取烹饪袋"
+            }
+            catch { }
+        }
     }
 }

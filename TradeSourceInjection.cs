@@ -6,7 +6,7 @@ using HarmonyLib;
 using HotGame = GameCore.HotUpdate;
 using CookingUI = GameCore.HotUpdate.ReduxUI;
 
-namespace CookingSourceExpand
+namespace BaseButler.SourceExpand
 {
     /// <summary>
     /// 无人机 TradeUI（ShowUI → RebuildBagTabs 路径）来源扩展。
@@ -105,7 +105,7 @@ namespace CookingSourceExpand
             try
             {
                 int before = CountOf(list);
-                CookingSourceExpandPlugin.Log.LogInfo(
+                CookingSourceExpandPlugin.Log.LogDebug(
                     $"[TradeSource] {tag}: state.Containers={(list == null ? "null" : list.GetType().FullName)} 已有 {before} 个，缓存 {CachedSources.Count} 个");
                 DiagnosticsEach(list);
                 if (list == null || CachedSources == null || CachedSources.Count == 0) return;
@@ -113,7 +113,7 @@ namespace CookingSourceExpand
                 if (before >= CachedSources.Count) return; // 已含全部，避免重复追加
 
                 int added = AppendTo(list, CachedSources, before);
-                CookingSourceExpandPlugin.Log.LogInfo($"[TradeSource] {tag} 注入来源 {added} 个 → 现 {CountOf(list)} 个");
+                CookingSourceExpandPlugin.Log.LogDebug($"[TradeSource] {tag} 注入来源 {added} 个 → 现 {CountOf(list)} 个");
             }
             catch (Exception) { }
         }
@@ -272,7 +272,7 @@ namespace CookingSourceExpand
                       .Append(",cid=").Append(GetProp(it, "FurnitureConfigId"))
                       .Append(",fr=").Append(GetProp(it, "IsFridge")).Append(") ");
                 }
-                CookingSourceExpandPlugin.Log.LogInfo("[TradeSource] Containers内容: " + sb);
+                CookingSourceExpandPlugin.Log.LogDebug("[TradeSource] Containers内容: " + sb);
             }
             catch (Exception) { }
         }

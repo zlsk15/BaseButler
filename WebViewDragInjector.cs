@@ -1,9 +1,10 @@
 using System;
 using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
 using BepInEx.Logging;
 
-namespace CookingSourceExpand
+namespace BaseButler.SourceExpand
 {
     /// <summary>
     /// 自修复前端打补丁：mod 每次启动时，自动往烹饪/手工/交易面板的 HTML 里注入
@@ -68,11 +69,18 @@ namespace CookingSourceExpand
         /// 不做全扫回退（与官方判定保持一致）。
         /// 内部重锁配方时用 __cseInternalClick 标志防递归，避免误触发 gather。</summary>
         private const string GatherSentinel = "CSE_AUTOPATCH_GATHER";
+
+        // ★方案A吸收（参考 SLCookLink "stable-order v1"）：让可填装/就绪的菜排前、同档位按菜谱书顺序固定，
+        // 避免点击填装后菜谱乱动。只对 Cooking 面板注入，独立哨兵、幂等、抗 Steam 更新自修复。
+        private const string SortSentinel = "CSE_AUTOPATCH_SORT";
+        private const string SortOld = "State.lastRecipes = recipes || [];";
+        private const string SortNew =
+            "recipes = (recipes || []).slice().sort(function(a,b){var la=a.craftLocked?1:0,lb=b.craftLocked?1:0;if(la!==lb)return la-lb;var sa=a.status||0,sb=b.status||0;if(sa!==sb)return sb-sa;return (a.recipeId||0)-(b.recipeId||0);}); /* CSE_AUTOPATCH_SORT */ State.lastRecipes = recipes;";
         private const string GatherJs =
             "<script>" +
             "(function(){" +
-            "if(window.__cseGatherLoaded)return;window.__cseGatherLoaded=1;" +
-            "function dbg(s){}" +
+            "if(window.__cseGatherLoaded)return;window.__cseGatherLoaded=1;/*CSE_GATHER_VER=5*/" +
+            "function dbg(s){try{if(core&&core.UnitySendEvent)core.UnitySendEvent('CSE_DEBUG',{text:'[G] '+s});}catch(e){}}" +
 "function toast(msg,ok){}" +
             "window.__cseWait=[];function notifyBag(d){var w=window.__cseWait;for(var i=w.length-1;i>=0;i--){var x=w[i];if(x.done)continue;var ok=false;try{ok=x.pred(d);}catch(e){ok=false;}if(ok){x.done=true;clearTimeout(x.to);w.splice(i,1);x.res(d);}}}" +
             "(function tryApply(){try{var ow=window.applyBagMsg;if(typeof ow==='function'&&!window.__cseWrappedBag){window.__cseWrappedBag=1;" +
@@ -104,10 +112,10 @@ namespace CookingSourceExpand
             "for(var oi=0;oi<order.length;oi++){var key=order[oi];var e=expect[key];var needN=Math.max(0,e.need-e.have);if(needN<=0)continue;var kn=norm(key);var wantId=e.itemId;" +
             "for(var ii=0;ii<items.length&&needN>0;ii++){var it=items[ii];if(!it||(it.count||0)<1)continue;var idm=(wantId!=null&&((it.itemId!=null&&parseInt(it.itemId)===parseInt(wantId))||(it.configId!=null&&parseInt(it.configId)===parseInt(wantId))));var hmm=nameHit(it.name,key);if(!idm&&!hmm)continue;" +
             "if(sameOwner){e.have+=Math.min(needN,it.count);sent++;needN=Math.max(0,e.need-e.have);continue;}" +
-            "var cell=nextCell();if(!cell){toast('工作台没有空格',false);return -1;}" +
-            "core.UnitySendEvent('ITEM_MOVE',{itemId:parseInt(it.itemId),fromOwnerId:target,toOwnerId:_wb,x:cell.x,y:cell.y});" +
-            "dbg('搬 '+(it.name||key)+' itemId'+it.itemId+' '+target+'→'+_wb+'@'+cell.x+','+cell.y+' 堆'+it.count);" +
-            "e.have+=Math.min(needN,it.count);sent++;needN=Math.max(0,e.need-e.have);}}return sent;}" +
+"var cell=nextCell();if(!cell){toast('工作台没有空格',false);return -1;}" +
+"var sCnt=it.count||0;if(sCnt>needN){core.UnitySendEvent('BB_SPLIT_MOVE',{itemId:parseInt(it.itemId)||0,configId:parseInt(it.configId)||0,count:needN,fromOwnerId:target,toOwnerId:_wb,x:cell.x,y:cell.y});dbg('按需拆取 '+(it.name||key)+' '+target+'→'+_wb+' x'+needN+' 堆'+sCnt+' id'+it.itemId+' cfg'+(it.configId||0));e.have+=needN;sent++;needN=0;}" +
+"else{core.UnitySendEvent('ITEM_MOVE',{itemId:parseInt(it.itemId),fromOwnerId:target,toOwnerId:_wb,x:cell.x,y:cell.y});dbg('整堆搬 '+(it.name||key)+' itemId'+it.itemId+' '+target+'→'+_wb+'@'+cell.x+','+cell.y+' 堆'+sCnt);e.have+=sCnt;sent++;needN=Math.max(0,e.need-e.have);}" +
+"}}return sent;}" +
             "function itemNames(d){var o={};(d&&d.bagItems||[]).forEach(function(x){if(x&&x.name){var k=x.name+'#'+(x.itemId||0);o[k]=(x.count||1);}});var a=[];for(var k in o)a.push(k.replace('#', ' x')+'='+o[k]);return a.join(', ');}" +
             "function countByName(list){var m={};(list||[]).forEach(function(o){if(o&&o.name)m[o.name]=(m[o.name]||0)+(o.count||1);});return m;}" +
             "async function scanCabs(list,expect,order,tag,ms){" +
@@ -130,7 +138,7 @@ namespace CookingSourceExpand
             "setTimeout(function(){try{core.UnitySendEvent('CRAFT');}catch(e){}res();},90);},400);});}" +
             "async function verifyMats(expect){" +
             "var deadline=Date.now()+3500;" +
-            "function calc(src){var bid={};var hits=[];(src||[]).forEach(function(o){if(!o)return;if(o.itemId!=null){bid[''+(parseInt(o.itemId))]=(bid[''+(parseInt(o.itemId))]||0)+(o.count||1);}hits.push(o);});var idGiven={};var out=[];for(var k in expect){var e=expect[k];var haveN=0;if(e.itemId!=null){haveN+=bid[''+(parseInt(e.itemId))]||0;idGiven[k]=1;}for(var h=0;h<hits.length;h++){var it=hits[h];if(!it)continue;if(e.itemId!=null&&it.itemId!=null&&parseInt(it.itemId)===parseInt(e.itemId))continue;if(!idGiven[k]&&nameHit(it.name,k))haveN+=it.count||1;else if(idGiven[k]&&nameHit(it.name,k))haveN+=it.count||1;}if(haveN<e.need)out.push(e.name);}return out;}" +
+            "function calc(src){var idc={},nmc={};(src||[]).forEach(function(o){if(!o)return;var c=o.count||1;if(o.itemId!=null){var ik=''+(parseInt(o.itemId));idc[ik]=(idc[ik]||0)+c;}var n=String(o.name||'').replace(/[\\s\\u3000]/g,'');if(n)nmc[n]=(nmc[n]||0)+c;});var out=[];for(var k in expect){var e=expect[k];var haveN=(e.itemId!=null)?(idc[''+(parseInt(e.itemId))]||0):(nmc[String(e.name||'').replace(/[\\s\\u3000]/g,'')]||0);if(haveN<e.need)out.push(e.name);}return out;}" +
             "function wbBag(){return (typeof window.__cseWbBag!=='undefined'&&window.__cseWbBag&&window.__cseWbBag.bagItems)?window.__cseWbBag.bagItems:null;}" +
             "while(Date.now()<deadline){" +
             "var f=wbItems(),m0=calc(f);if(!m0.length)return m0;" +
@@ -184,9 +192,10 @@ namespace CookingSourceExpand
             "if(!any){dbg('一处都没搬到['+order.join('|')+']，取消制作');toast('各处都找不到：'+order.join('-')+'，已取消制作',false);return 'cancel';}}" +
             "await sleep(900);" +
             "dbg('期望明细['+Object.keys(expect).map(function(k){return expect[k].name+' hv'+expect[k].have+'/'+expect[k].need;}).join(' | ')+']');" +
-            "var missA=order.filter(function(k){return expect[k].have<expect[k].need;});" +
-            "if(missA.length){dbg('材料不足['+missA.join('|')+']，取消制作，不发CRAFT避免误做其他配方');toast('材料不足，已取消制作：'+missA.join('-'),false);return 'cancel';}" +
-            "dbg('材料已备齐(按实际搬运累计)，进入自动制作，交由官方后端最终判定');" +
+            "/*CSE_FIX_v4: 以工作台实测实物为准（verifyMats 最多实盘重查 3.5s）再决定是否制作，避免乐观累计假备齐导致 CRAFT 空转、面板卡死*/" +
+            "var _miss=await verifyMats(expect);" +
+            "if(_miss&&_miss.length){dbg('材料不足[实测]'+_miss.join('|')+'，取消制作，不发CRAFT');toast('材料不足，已取消制作：'+_miss.join('-'),false);return 'cancel';}" +
+            "dbg('材料已备齐(实测工作台真实实物)，进入自动制作，交由官方后端最终判定');" +
             "toast('自动制作中…',true);" +
             "await doCraft();" +
             "dbg('已发送制作');" +
@@ -222,6 +231,7 @@ namespace CookingSourceExpand
                 }
                 log.LogInfo($"[CookingSourceExpand] 前端『拖动滑动+滚动条』补丁：新打 {patched} 个，已存在跳过 {skipped} 个，失败 {failed} 个。");
                 ApplyGather(log);
+                ApplyRecipeSort(log);
             }
             catch (Exception e)
             {
@@ -290,7 +300,19 @@ namespace CookingSourceExpand
                 try { text = File.ReadAllText(path, new UTF8Encoding(false)); }
                 catch (Exception e) { log.LogWarning($"[CookingSourceExpand] 读取 ToolTable.html 失败：{e.Message}"); return; }
 
-                if (text.Contains(GatherSentinel)) return; // 已打过，跳过
+                const string VerMarker = "CSE_GATHER_VER=5";
+                // 已打且版本最新：跳过
+                if (text.Contains(GatherSentinel) && text.Contains(VerMarker)) return;
+
+                // 存在旧版注入：整块干净移除（避免新旧脚本并存、全局函数/变量互相覆盖）。
+                // ★2026-09-20 修复严重 bug：旧正则 `[\s\S]*?__cseGatherLoaded[\s\S]*?` 未把 __cseGatherLoaded 锚定到
+                //   同一个 <script> 块内，重新注入（版本号升级触发）时它会从 HTML 更前面的官方 <script> 起吃，
+                //   把整页游戏脚本与我们的旧脚本一起删掉，导致 ToolTable 页面被打空、面板打不开。
+                //   新正则用 (?!</?script[^>]*>) 负向断言，保证不会跨过任何其它 <script>/</script>。
+                var re = new Regex(
+                    "<script[^>]*>(?:(?!</?script[^>]*>)[\\s\\S])*?__cseGatherLoaded(?:(?!</?script[^>]*>)[\\s\\S])*?</script>\\s*<!--\\s*" + GatherSentinel + "\\s*-->",
+                    RegexOptions.IgnoreCase);
+                text = re.Replace(text, "");
 
                 int bodyIdx = text.LastIndexOf("</body>", StringComparison.OrdinalIgnoreCase);
                 if (bodyIdx >= 0)
@@ -302,11 +324,51 @@ namespace CookingSourceExpand
                     text = text + "\n<!-- " + GatherSentinel + " -->";
                 }
                 File.WriteAllText(path, text, new UTF8Encoding(false));
-                log.LogInfo("[CookingSourceExpand] 已给 ToolTable.html 打上『点击配方补齐并制作』补丁。");
+                log.LogInfo("[CookingSourceExpand] 已给 ToolTable.html 打上『点击配方补齐并制作』补丁（按需拆取版）。");
             }
             catch (Exception e)
             {
                 log.LogWarning($"[CookingSourceExpand] 『点击配方补齐并制作』补丁失败：{e.Message}");
+            }
+        }
+
+        /// <summary>仅对烹饪面板注入「菜谱稳定排序」（独立哨兵，幂等，抗更新）。只改前端排序，不碰任何物品数据。</summary>
+        private static void ApplyRecipeSort(ManualLogSource log)
+        {
+            try
+            {
+                var path = Path.Combine(UiRoot, "Cooking", "Cooking.html");
+                if (!File.Exists(path))
+                {
+                    log.LogWarning("[CookingSourceExpand] Cooking.html 不存在，「菜谱稳定排序」补丁跳过。");
+                    return;
+                }
+                string text;
+                try { text = File.ReadAllText(path, new UTF8Encoding(false)); }
+                catch (Exception e) { log.LogWarning($"[CookingSourceExpand] 读取 Cooking.html 失败：{e.Message}"); return; }
+
+                if (text.Contains(SortSentinel)) return; // 已打过，跳过
+
+                if (text.IndexOf(SortOld, StringComparison.Ordinal) < 0)
+                {
+                    log.LogWarning("[CookingSourceExpand] Cooking.html 未找到排序注入点（游戏可能已更新变量名），『菜谱稳定排序』跳过。");
+                    return;
+                }
+
+                var bak = path + ".cse.bak";
+                if (!File.Exists(bak))
+                {
+                    try { File.WriteAllText(bak, text, new UTF8Encoding(false)); }
+                    catch (Exception e) { log.LogWarning($"[CookingSourceExpand] 备份 Cooking.html 失败：{e.Message}"); }
+                }
+
+                text = text.Replace(SortOld, SortNew);
+                File.WriteAllText(path, text, new UTF8Encoding(false));
+                log.LogInfo("[CookingSourceExpand] 已给 Cooking.html 打上『菜谱稳定排序』补丁。");
+            }
+            catch (Exception e)
+            {
+                log.LogWarning($"[CookingSourceExpand] 『菜谱稳定排序』补丁失败：{e.Message}");
             }
         }
     }
