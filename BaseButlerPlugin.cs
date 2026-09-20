@@ -8,12 +8,12 @@ using HarmonyLib;
 namespace BaseButler
 {
     /// <summary>
-    /// BaseButler（基地管家）v2.1 唯一入口，统一加载 A/B/C 模块：
+    /// BaseButler（基地管家）v2.0.1 唯一入口，统一加载 A/B 模块：
     ///   A 来源扩展   SourceExpand（原 CookingSourceExpand 全部行为继承，
     ///                            吸收 IsCookingFurnitureBag 直取放行 + 菜谱稳定排序）
-    ///   B 仓储管家   StorageButler（Phase2 预览整理清单，ExecMode=1 时按规则移动）
-    ///   C 堆叠优化   Stack（搬运自 SLTweaksSplit：入包自动合并 + 右键拆分 + 单格堆叠上限扩展）
-    /// 三个模块共享同一 Harmony 实例、同一 Config 文件与同一日志，共用一个 DLL。
+    ///   B 堆叠优化   Stack（搬运自 SLTweaksSplit：入包自动合并 + 右键拆分 + 单格堆叠上限扩展）
+    /// 两个模块共享同一 Harmony 实例、同一 Config 文件与同一日志，共用一个 DLL。
+    /// 仓储管家（原 B 模块 StorageButler）因未稳定触发，已隔离停用（源码保留，不再加载）。
     /// 时间档位（原 AutoTimeBoost 模块）已整体移除，不再提供切档能力。
     /// </summary>
     [BepInPlugin(PluginInfo.GUID, PluginInfo.Name, PluginInfo.Version)]
@@ -33,11 +33,11 @@ namespace BaseButler
             _harmony = new Harmony(PluginInfo.GUID);
 
             // 每个模块独立装载：任一模 Init 内意外异常，只记日志并继续，绝不连累其它模块
-            Safe("A 来源扩展(SourceExpand)",  () => SourceExpand.CookingSourceExpandPlugin.Init(Config, Log, _harmony));
-            Safe("B 仓储管家(StorageButler)", () => StorageButler.StorageButlerPlugin.Init(Config, Log, _harmony));
-            Safe("C 堆叠优化(Stack)",          () => Stack.Plugin.Init(Config, Log, _harmony));
+            Safe("A 来源扩展(SourceExpand)", () => SourceExpand.CookingSourceExpandPlugin.Init(Config, Log, _harmony));
+            Safe("B 堆叠优化(Stack)",          () => Stack.Plugin.Init(Config, Log, _harmony));
+            // 仓储管家（原 B）因未稳定触发已隔离停用：源码保留在 StorageButler_Plugin.cs，不再在入口装载。
 
-            Log.LogMessage($"{PluginInfo.Name} v{PluginInfo.Version} 已加载：A 来源扩展 + B 仓储管家 + C 堆叠优化，共用一个 DLL（时间档位模块已移除）。");
+            Log.LogMessage($"{PluginInfo.Name} v{PluginInfo.Version} 已加载：A 来源扩展 + B 堆叠优化，共用一个 DLL（仓储管家隔离、时间档位移除）。");
         }
 
         private static void Safe(string name, Action init)
@@ -80,6 +80,6 @@ namespace BaseButler
     {
         public const string GUID = "com.basebutler.mod";
         public const string Name = "BaseButler";
-        public const string Version = "2.0.0";
+        public const string Version = "2.0.1";
     }
 }

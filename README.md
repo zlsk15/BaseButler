@@ -1,13 +1,14 @@
 # Survival Log — BaseButler（居家管家）
 
-当前版本：**v2.0.0** · Latest: v2.0.0
+当前版本：**v2.0.1** · Latest: v2.0.1
 
-一个《生存日志》(Survival Log) 的 **BepInEx 6** 整合插件。原「Cooking Source Expand（食材来源扩展）」已并入本插件，加上仓储管家与堆叠优化，三模块共用一个 DLL。
+一个《生存日志》(Survival Log) 的 **BepInEx 6** 整合插件。原「Cooking Source Expand（食材来源扩展）」已并入本插件，加上堆叠优化，两个模块共用一个 DLL。
 
-A BepInEx 6 plugin for Survival Log. It merges the former **Cooking Source Expand**, adds a **storage butler** and **stacking optimization** into one DLL.
+A BepInEx 6 plugin for Survival Log. It merges the former **Cooking Source Expand** and **stacking optimization** into one DLL.
 
 - 插件 GUID：`com.basebutler.mod`
 - 依赖：BepInEx 6（IL2CPP）
+- 仓储管家（原 B 模块）因未稳定触发已隔离停用，源码保留完好于此仓库。
 
 ---
 
@@ -23,15 +24,13 @@ A BepInEx 6 plugin for Survival Log. It merges the former **Cooking Source Expan
 - 菜谱稳定性：WebUI 注入，保持菜谱列表排序稳定并美化滚动条。
 - 配置：`SelectRecipeDiagnostics`（取料诊断日志，默认关）、`IncludeBoxConfigIds` / `ExtraExcludedBoxConfigIds`（来源白名单/额外排除）。
 
-### B · 仓储管家 Storage Butler *(本版已并入)*
-
-自动整理储物家具：扫描容器、按规则把物品汇总/归类到指定目标柜，支持隐形容器过滤（默认排除 `材料堆 / 资源堆 / 木料堆 / 石头堆 / 燃料堆` 等非储物家具）。
-
-### C · 堆叠优化 Stacking
+### B · 堆叠优化 Stacking
 
 - 自动合并：物品入包时自动把同类堆合并到一起。
 - 堆叠上限扩展：把若干材料的单格堆叠上限从 1 提升到 5（肥料、种子、冰块、木板、木片、木材、石头、石块、铁片、铁皮、铁锭、金属、材料、塑料、玻璃、纸等）。
 - 一键拆分：按需把堆超量的材料拆出制作所需数量到工作台，配合一键烹饪避免"整堆搬走、多搬/占格"。
+
+> 仓储管家（原 B 模块 StorageButler）因未稳定触发已隔离停用，本版不加载。源码保留于 `StorageButler_Plugin.cs`，后续稳定后会重新开启。
 
 ---
 

@@ -1,0 +1,7 @@
+BaseButler v2.0.1: isolate StorageButler (B), renumber modules A/B
+
+- Isolate/stage-out the StorageButler module (was B) — it was not triggering reliably.
+  Source kept intact in StorageButler_Plugin.cs, just not loaded at the plugin entry.
+- Renumber active modules: A = SourceExpand (cooking source expand + one-click cooking),
+  B = Stacking optimization (was C).
+- Bump version to 2.0.1; update entry comments, load log, README and install notes.
