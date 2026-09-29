@@ -8,7 +8,7 @@ using HarmonyLib;
 namespace BaseButler
 {
     /// <summary>
-    /// BaseButler（基地管家）v2.0.1 唯一入口，统一加载 A/B 模块：
+    /// BaseButler（基地管家）v2.0.7 唯一入口，统一加载 A/B 模块：
     ///   A 来源扩展   SourceExpand（原 CookingSourceExpand 全部行为继承，
     ///                            吸收 IsCookingFurnitureBag 直取放行 + 菜谱稳定排序）
     ///   B 堆叠优化   Stack（搬运自 SLTweaksSplit：入包自动合并 + 右键拆分 + 单格堆叠上限扩展）
@@ -80,6 +80,6 @@ namespace BaseButler
     {
         public const string GUID = "com.basebutler.mod";
         public const string Name = "BaseButler";
-        public const string Version = "2.0.1";
+        public const string Version = "2.0.7";
     }
 }
