@@ -107,6 +107,10 @@ namespace BaseButler.Stack
 
         private static float _retryAt;
 
+        private static Type _featType;
+
+        private static FieldInfo _enabledField;
+
         public static void Tick()
         {
             if (_done || !SplitConfig.Enabled || Time.unscaledTime < _retryAt)
@@ -115,15 +119,53 @@ namespace BaseButler.Stack
             }
             try
             {
-                DropOneFeature.Enabled = true;
+                TryEnableDropOne();
                 _done = true;
-                Plugin.LogSource.LogInfo("[堆叠拆分] DropOneFeature.Enabled = true（丢弃键只丢一个）");
             }
             catch (Exception ex)
             {
                 _retryAt = Time.unscaledTime + 5f;
                 Plugin.LogSource.LogError("[堆叠拆分] 设置失败，5秒后重试: " + ex.Message);
             }
+        }
+
+        // 直接写 DropOneFeature.Enabled 会在方法首次执行时于 IL2CPP trampoline 阶段解析类型；
+        // 游戏版本若删/改了该类型，TypeLoadException 会发生在 try/catch 之外直接崩。
+        // 改用反射安全查找：类型存在才设置，找不到就静默跳过。
+        private static void TryEnableDropOne()
+        {
+            if (_featType == null)
+            {
+                Assembly hotUpdate = null;
+                foreach (Assembly asm in AppDomain.CurrentDomain.GetAssemblies())
+                {
+                    if (asm.GetName().Name == "HotUpdate")
+                    {
+                        hotUpdate = asm;
+                        break;
+                    }
+                }
+                if (hotUpdate != null)
+                {
+                    _featType = hotUpdate.GetType("GameCore.HotUpdate.DropOneFeature");
+                }
+            }
+            if (_featType == null)
+            {
+                Plugin.LogSource.LogInfo("[堆叠拆分] 未找到 DropOneFeature（当前游戏版本无该类型），丢弃键只丢一个功能跳过");
+                return;
+            }
+            if (_enabledField == null)
+            {
+                _enabledField = _featType.GetField("Enabled", BindingFlags.Static | BindingFlags.Public);
+            }
+            if (_enabledField == null)
+            {
+                Plugin.LogSource.LogInfo("[堆叠拆分] 未找到 DropOneFeature.Enabled 字段，丢弃键只丢一个功能跳过");
+                return;
+            }
+            _enabledField.SetValue(null, true);
+            Plugin.LogSource.LogInfo("[堆叠拆分] DropOneFeature.Enabled = true（丢弃键只丢一个）");
         }
     }
 
@@ -311,6 +353,29 @@ namespace BaseButler.Stack
                 string page = ((array.Length > 1) ? array[1] : "");
                 string ev = ((array.Length > 2) ? array[2] : "");
                 string json = ((array.Length > 3) ? array[3] : value);
+                // 前端诊断日志桥：一键制作的 dbg() 走 core.UnitySendEvent('CSE_DEBUG',{text})，
+                // 实际汇入 OnMessageFromJS（UnitySendEvent 的自定义事件到不了 OnPageMessage）。
+                // 此处原文转储到 BepInEx 日志，纯诊断、放行不打扰前端流程。
+                if (ev == "CSE_DEBUG")
+                {
+                    string txt = json;
+                    if (!string.IsNullOrEmpty(json))
+                    {
+                        try
+                        {
+                            using (var dd = System.Text.Json.JsonDocument.Parse(json))
+                            {
+                                if (dd.RootElement.ValueKind == System.Text.Json.JsonValueKind.Object
+                                    && dd.RootElement.TryGetProperty("text", out var t)
+                                    && t.ValueKind == System.Text.Json.JsonValueKind.String)
+                                    txt = t.GetString();
+                            }
+                        }
+                        catch { }
+                    }
+                    Plugin.LogSource.LogMessage("[CSE前端] " + txt);
+                    return true;
+                }
                 if (TradeSystem.IsTradeClick(page, ev, json) && TradeSystem.Handle(__instance, page, json))
                 {
                     return false;
