@@ -183,8 +183,8 @@ namespace BaseButler.Stack
                 SplitConfig.HalfKey = ParseKey(cfg.Bind("Split", "HalfModifier", "LeftShift", "「拆一半」修饰键（Unity KeyCode 名，如 LeftShift/LeftControl/Tab；右键固定，按住该键+右键=转移一半）").Value, (KeyCode)304, "HalfModifier");
                 SplitConfig.OneKey = ParseKey(cfg.Bind("Split", "OneModifier", "LeftAlt", "「转移 1 个」修饰键（Unity KeyCode 名，如 LeftAlt/LeftControl/Tab；右键固定，按住该键+右键=转移 1 个）").Value, (KeyCode)308, "OneModifier");
                 SplitConfig.CookingNoStack = cfg.Bind("Split", "CookingNoStack", true, "烹饪家具内不堆叠：拆分转移进烹饪家具的物品逐件独立存放（烹饪按格子/实例计份，故可识别多份）。关闭后按堆叠整体放入").Value;
-                StackLimitSystem.NameKeywords = cfg.Bind("ItemStack", "NameKeywords", "肥料,种子,冰块,木板,木片,木材,石头,石块,铁片,铁皮,铁锭,金属,材料,塑料,玻璃,纸", "关键字（包含匹配）规则：`关键字` 或 `关键字=数值`，多个用逗号分隔；对全部物品（含自定义物品）生效，优先级低于 ExactNames").Value;
-                StackLimitSystem.ExactNames = cfg.Bind("ItemStack", "ExactNames", "", "精确名称规则（优先级高于关键字）：`名称` / `名称@ID` / `名称=数值` / `名称@ID=数值`，多个用逗号分隔").Value;
+                StackLimitSystem.NameKeywords = cfg.Bind("ItemStack", "NameKeywords", "肥料,种子,冰块,木板,木片,木材,石头,石块,铁片,铁皮,铁锭,金属,塑料,玻璃,纸", "关键字（包含匹配）规则：`关键字` 或 `关键字=数值`，多个用逗号分隔；对全部物品（含自定义物品）生效，优先级低于 ExactNames").Value;
+                StackLimitSystem.ExactNames = cfg.Bind("ItemStack", "ExactNames", "铁丝,电器元件,容器,卡式气瓶,门板修补材料,窗户修补材料", "精确名称规则（优先级高于关键字）：`名称` / `名称@ID` / `名称=数值` / `名称@ID=数值`，多个用逗号分隔").Value;
                 StackLimitSystem.NewStackLimit = cfg.Bind("ItemStack", "StackLimit", 5, "未在规则中单独写数值时的默认堆叠上限").Value;
                 StackLimitSystem.AllStackableLimit = cfg.Bind("ItemStack", "AllStackableLimit", 0, "全局兜底：所有原本可堆叠（当前上限>=2）且未命中 ExactNames/NameKeywords 规则的物品，统一改为该上限；0 = 关闭").Value;
                 AutoMergeSystem.Enabled = cfg.Bind("ItemStack", "AutoMerge", true, "自动合并（true=启用）：后台把同一容器内【游戏自己认为可合并】的同种物品多堆自动并成一堆，无需任何操作/按键。仅合并逐实例数据完全一致的堆（如木片/木材），烹饪家具内的逐件独立存放不受影响").Value;
@@ -953,11 +953,13 @@ namespace BaseButler.Stack
                 var storyIds = new Il2CppSystem.Collections.Generic.List<int>();
                 if (bagOwner != 0)
                 {
-                    Reducer_Web_ToolTable.RefreshBagItems(state, BuildDataItems(im, bagOwner), state.BagItems, storyIds);
+                    // 游戏 v1.0.14911+ 更新后 RefreshBagItems 新增 float currentHours 参数（工作台物品时间/倒计时显示用）。
+                    // mod 侧是"拆分/合并后同步网格"，时间字段后续由官方正常刷新覆盖，传 0f 安全兼容、不崩不丢物。
+                    Reducer_Web_ToolTable.RefreshBagItems(state, BuildDataItems(im, bagOwner), state.BagItems, storyIds, 0f);
                 }
                 if (workbenchOwner != 0)
                 {
-                    Reducer_Web_ToolTable.RefreshBagItems(state, BuildDataItems(im, workbenchOwner), state.WorkbenchItems, storyIds);
+                    Reducer_Web_ToolTable.RefreshBagItems(state, BuildDataItems(im, workbenchOwner), state.WorkbenchItems, storyIds, 0f);
                 }
             }
         }
@@ -1043,9 +1045,9 @@ namespace BaseButler.Stack
             public int Value;
         }
 
-        internal static string NameKeywords = "肥料,种子,冰块,木板,木片,木材,石头,石块,铁片,铁皮,铁锭,金属,材料,塑料,玻璃,纸";
+        internal static string NameKeywords = "肥料,种子,冰块,木板,木片,木材,石头,石块,铁片,铁皮,铁锭,金属,塑料,玻璃,纸";
 
-        internal static string ExactNames = "";
+        internal static string ExactNames = "铁丝,电器元件,容器,卡式气瓶,门板修补材料,窗户修补材料";
 
         internal static int NewStackLimit = 5;
 
