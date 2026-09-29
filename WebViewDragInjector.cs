@@ -79,42 +79,54 @@ namespace BaseButler.SourceExpand
         private const string GatherJs =
             "<script>" +
             "(function(){" +
-            "if(window.__cseGatherLoaded)return;window.__cseGatherLoaded=1;/*CSE_GATHER_VER=5*/" +
+            "if(window.__cseGatherLoaded)return;window.__cseGatherLoaded=1;/*CSE_GATHER_VER=13*/" +
             "function dbg(s){try{if(core&&core.UnitySendEvent)core.UnitySendEvent('CSE_DEBUG',{text:'[G] '+s});}catch(e){}}" +
 "function toast(msg,ok){}" +
             "window.__cseWait=[];function notifyBag(d){var w=window.__cseWait;for(var i=w.length-1;i>=0;i--){var x=w[i];if(x.done)continue;var ok=false;try{ok=x.pred(d);}catch(e){ok=false;}if(ok){x.done=true;clearTimeout(x.to);w.splice(i,1);x.res(d);}}}" +
             "(function tryApply(){try{var ow=window.applyBagMsg;if(typeof ow==='function'&&!window.__cseWrappedBag){window.__cseWrappedBag=1;" +
             "window.applyBagMsg=function(d){try{notifyBag(d);}catch(e){}window.__cseLastBag=d;window.__cseBagSeq=(window.__cseBagSeq||0)+1;" +
-            "if(window.__cseWbO&&d&&d.bagOwnerId===window.__cseWbO)window.__cseWbBag=d;try{ow(d);}catch(e){}};return;}" +
+            "if(d&&d.workbenchItems){window.__cseWbBag={bagItems:d.workbenchItems};window.__cseWbBagT=Date.now();}try{ow(d);}catch(e){}};return;}" +
             "}catch(e){}if(!window.__cseWrappedBag)setTimeout(tryApply,150);})();" +
             "try{if(core&&core.UnitySendEvent&&!window.__cseWrappedUE){window.__cseWrappedUE=1;var ue=core.UnitySendEvent;" +
             "core.UnitySendEvent=function(ev,data){" +
             "var ret=ue.apply(this,arguments);" +
             "if(ev==='RECIPE_CLICK'&&data&&data.recipeKey&&!window.__cseInternalClick){" +
             "var r=(typeof recipeByKey!=='undefined'&&recipeByKey)?recipeByKey[data.recipeKey]:null;" +
-            "if(r){window.__cseRecipe=r;var _st=Date.now();" +
-            "setTimeout(async function(){var res='wait',_dl=_st+2800;while(Date.now()<_dl&&res==='wait'){res=await gather(r.recipeKey,_st);if(res==='wait')await sleep(220);}},30);}" +
+            "if(r){window.__cseRecipe=r;window.__cseMovedKey={};window.__cseScannedOwn={};window.__cseTimeoutOwn={};window.__cseEmptyOwn={};window.__cseUnacked=0;window.__cseCurSeen=0;window.__cseWbO=wbOwner();window.__cseWbBag=null;window.__cseWbBagT=0;var _st=Date.now();" +
+            "setTimeout(async function(){var res='wait',_dl=_st+2800;while(Date.now()<_dl&&res==='wait'){res=await gather(r.recipeKey,_st);if(res==='wait')await sleep(220);}" +
+"/*CSE_FIX_v6: 外层窗口到期兜底——旧逻辑当最后一次 gather 仍返回 'wait' 时整个流程静默结束（无 toast、无 CRAFT），而材料此刻其实已搬到工作台，正是\"材料都在但不制作\"。现在到期必须实盘复核一次：齐全就补发制作，不齐就明确提示，绝不静默。*/" +
+"if(res==='wait'){(function fin(){var n=window.__cseFinN=(window.__cseFinN||0)+1;if(window.__cseBusy&&n<60){setTimeout(fin,100);return;}var ex=expectFromRecipe();if(!ex){dbg('窗口到期兜底：无配方明细，放弃');return;}var mm=calcInv(wbItems(),ex);if(mm.length){var bb=wbBag();if(bb&&!calcInv(bb,ex).length)mm=[];}if(!mm.length){dbg('窗口到期兜底：实测已备齐，补发制作');toast('材料已备齐，自动制作…',true);doCraft(ex);}else{dbg('窗口到期兜底：实测仍缺['+mm.join('|')+']，取消');toast('材料仍未备齐，已取消制作：'+mm.join('-'),false);}})();}},30);}" +
             "}" +
             "return ret;};}}catch(e){}" +
             "function waitBag(pred,ms){return new Promise(function(res,rej){var to=setTimeout(function(){if(x.done)return;x.done=true;var i=window.__cseWait.indexOf(x);if(i>=0)window.__cseWait.splice(i,1);rej(new Error('wait-timeout'));},ms||1500);var x={pred:pred,to:to,res:res,done:false};window.__cseWait.push(x);});}" +
             "function sleep(ms){return new Promise(function(r){setTimeout(r,ms);});}" +
             "function getMats(){var r=window.__cseRecipe;if(!r)return null;var a=[];if(r.materialsJson){try{a=JSON.parse(r.materialsJson);}catch(e){}}return a.filter(function(m){return m&&m.need>0&&m.name;});}" +
             "function wbItems(){return (typeof workbench!=='undefined'&&workbench&&workbench.getItems)?workbench.getItems():[];}" +
-            "function wbInventory(){var m={};(wbItems()||[]).forEach(function(o){if(!o)return;if(o.name)m[o.name]=(m[o.name]||0)+(o.count||1);if(o.itemId!=null)m['#id'+(parseInt(o.itemId))]=(m['#id'+(parseInt(o.itemId))]||0)+(o.count||1);});return m;}" +
+            "function wbInventory(){var m={};(wbItems()||[]).forEach(function(o){if(!o)return;if(o.name)m[o.name]=(m[o.name]||0)+(o.count||1);if(o.configId!=null){var ck='#cfg'+(parseInt(o.configId));m[ck]=(m[ck]||0)+(o.count||1);}if(o.itemId!=null){var ik='#id'+(parseInt(o.itemId));m[ik]=(m[ik]||0)+(o.count||1);}});return m;}" +
+"function calcInv(src,expect){var cgc={},idc={},nmc={};(src||[]).forEach(function(o){if(!o)return;var c=o.count||1;if(o.configId!=null){var ck=''+(parseInt(o.configId));cgc[ck]=(cgc[ck]||0)+c;}if(o.itemId!=null){var ik=''+(parseInt(o.itemId));idc[ik]=(idc[ik]||0)+c;}var n=String(o.name||'').replace(/[\\s\\u3000]/g,'');if(n)nmc[n]=(nmc[n]||0)+c;});var out=[];for(var k in expect){var e=expect[k];var haveN=(e.configId!=null)?(cgc[''+(parseInt(e.configId))]||0):0;var bn=nmc[String(e.name||'').replace(/[\\s\\u3000]/g,'')]||0;if(bn>haveN)haveN=bn;if(e.itemId!=null){var bi=idc[''+(parseInt(e.itemId))]||0;if(bi>haveN)haveN=bi;}if(haveN<e.need)out.push(e.name);}return out;}" +
+"function wbBag(){var w=window.__cseWbBag;if(w&&w.bagItems&&w.bagItems.length)return w.bagItems;var lb=window.__cseLastBag;if(lb&&lb.workbenchItems&&lb.workbenchItems.length)return lb.workbenchItems;return null;}" +
+"function expectFromRecipe(){var r=window.__cseRecipe;if(!r)return null;var ms=getMats();if(!ms||!ms.length)return null;var ex={};ms.forEach(function(m){var k=m&&m.name;if(!k)return;if(!(k in ex))ex[k]={name:k,need:m.need||0,have:0,itemId:m.itemId||null,configId:m.configId||null};});return Object.keys(ex).length?ex:null;}" +
             "function wbOcc(){var occ={};(wbItems()||[]).forEach(function(o){if(!o)return;for(var i=0;i<(o.w||1);i++)for(var j=0;j<(o.h||1);j++)occ[(o.x+i)+','+(o.y+j)]=1;});return occ;}" +
             "function nextCell(){var lm=(typeof lastBagMsg!=='undefined'?lastBagMsg:{})||{};var cols=lm.workbenchCols||6,rows=lm.workbenchRows||5;var occ=window.__cseOcc||wbOcc();" +
             "for(var y=0;y<rows;y++)for(var x=0;x<cols;x++){var k=x+','+y;if(!occ[k]){occ[k]=1;return{x:x,y:y};}}return null;}" +
             "function wbOwner(){try{if(workbench&&workbench.getOwnerId)return workbench.getOwnerId();}catch(e){}return 0;}" +
             "function norm(s){return String(s||'').replace(/[\\s\\u3000]/g,'');}" +
             "function nameHit(a,b){var x=norm(a),y=norm(b);if(!x||!y)return false;return x===y;}" +
-            "function fillFromCabinet(target,d,expect,order){" +
-            "var items=(d&&d.bagItems)||[];var sent=0;var _wb=wbOwner();var sameOwner=(_wb!==0&&target===_wb);" +
-            "for(var oi=0;oi<order.length;oi++){var key=order[oi];var e=expect[key];var needN=Math.max(0,e.need-e.have);if(needN<=0)continue;var kn=norm(key);var wantId=e.itemId;" +
-            "for(var ii=0;ii<items.length&&needN>0;ii++){var it=items[ii];if(!it||(it.count||0)<1)continue;var idm=(wantId!=null&&((it.itemId!=null&&parseInt(it.itemId)===parseInt(wantId))||(it.configId!=null&&parseInt(it.configId)===parseInt(wantId))));var hmm=nameHit(it.name,key);if(!idm&&!hmm)continue;" +
-            "if(sameOwner){e.have+=Math.min(needN,it.count);sent++;needN=Math.max(0,e.need-e.have);continue;}" +
-"var cell=nextCell();if(!cell){toast('工作台没有空格',false);return -1;}" +
-"var sCnt=it.count||0;if(sCnt>needN){core.UnitySendEvent('BB_SPLIT_MOVE',{itemId:parseInt(it.itemId)||0,configId:parseInt(it.configId)||0,count:needN,fromOwnerId:target,toOwnerId:_wb,x:cell.x,y:cell.y});dbg('按需拆取 '+(it.name||key)+' '+target+'→'+_wb+' x'+needN+' 堆'+sCnt+' id'+it.itemId+' cfg'+(it.configId||0));e.have+=needN;sent++;needN=0;}" +
-"else{core.UnitySendEvent('ITEM_MOVE',{itemId:parseInt(it.itemId),fromOwnerId:target,toOwnerId:_wb,x:cell.x,y:cell.y});dbg('整堆搬 '+(it.name||key)+' itemId'+it.itemId+' '+target+'→'+_wb+'@'+cell.x+','+cell.y+' 堆'+sCnt);e.have+=sCnt;sent++;needN=Math.max(0,e.need-e.have);}" +
+            "function countMat(bs,e){var n=0;if(!bs)return 0;for(var i=0;i<bs.length;i++){var o=bs[i];if(!o)continue;var c=o.count||1;var mm=false;if(e&&e.configId!=null&&o.configId!=null&&parseInt(o.configId)===parseInt(e.configId))mm=true;else if(e&&e.itemId!=null&&o.itemId!=null&&parseInt(o.itemId)===parseInt(e.itemId))mm=true;else if(e&&e.name&&o.name&&nameHit(o.name,e.name))mm=true;if(mm)n+=c;}return n;}" +
+"/*CSE_FIX_v8: 实测证实——原生 ITEM_MOVE(整堆搬) 走官方 reducer，会被间歇性拒收/回滚（源柜纹丝不动），而 C# 的 BB_SPLIT_MOVE(拆取通道，同步 AddItem 直改权威库存) 次次成功。因此所有取料统一走 BB_SPLIT_MOVE（整堆=n 的堆当「拆 n」发，变相整搬）；每次仍等官方工作台回包确认数量到账才发下一次；未确认就打 __cseUnacked 让全扫补扫来源 */" +
+"async function moveSync(k,e,it,target,_wb,needN){" +
+"var bs0=wbBag();var b0=countMat(bs0,e);var sCnt=it.count||0;var movedCnt=(sCnt>needN)?needN:sCnt;var cell=nextCell();if(!cell){return -1;}" +
+"core.UnitySendEvent('BB_SPLIT_MOVE',{itemId:parseInt(it.itemId)||0,configId:parseInt(it.configId)||0,count:movedCnt,fromOwnerId:target,toOwnerId:_wb,x:cell.x,y:cell.y});" +
+"dbg('拆取已发 '+(it.name||k)+' '+target+'→'+_wb+' x'+movedCnt+' 堆'+sCnt+' id'+it.itemId+' cfg'+(it.configId||0));" +
+"var dl=Date.now()+900;var seen=b0;while(Date.now()<dl){await sleep(50);var bx=wbBag();if(bx){var nn=countMat(bx,e);if(nn>=b0+movedCnt){seen=nn;break;}if(nn>seen)seen=nn;}}" +
+"if(seen>=b0+movedCnt){e.have+=movedCnt;window.__cseMovedKey[k]=1;dbg('  移动已确认 +'+movedCnt+' 累计'+e.have+'/'+e.need);return movedCnt;}" +
+"window.__cseUnacked=1;dbg('  移动未获官方确认(累计'+seen+'/'+(b0+movedCnt)+')，标记补扫');return 0;}" +
+"async function fillFromCabinet(target,d,expect,order){" +
+"var items=(d&&d.bagItems)||[];var sent=0;var _wb=wbOwner();var sameOwner=(_wb!==0&&target===_wb);var ms2={};" +
+"for(var oi=0;oi<order.length;oi++){var key=order[oi];var e=expect[key];var needN=Math.max(0,e.need-e.have);if(needN<=0)continue;var kn=norm(key);var wantId=e.itemId;" +
+"for(var ii=0;ii<items.length&&needN>0;ii++){var it=items[ii];if(!it||(it.count||0)<1)continue;if(ms2[it.itemId])continue;var idm=(wantId!=null&&((it.itemId!=null&&parseInt(it.itemId)===parseInt(wantId))||(it.configId!=null&&parseInt(it.configId)===parseInt(wantId))));var hmm=nameHit(it.name,key);if(!idm&&!hmm)continue;" +
+"if(sameOwner){e.have+=Math.min(needN,it.count);sent++;ms2[it.itemId]=1;needN=Math.max(0,e.need-e.have);continue;}" +
+"var c2=await moveSync(key,e,it,target,_wb,needN);if(c2<0){toast('工作台没有空格',false);return -1;}if(!c2)continue;ms2[it.itemId]=1;sent++;needN=Math.max(0,e.need-e.have);" +
 "}}return sent;}" +
             "function itemNames(d){var o={};(d&&d.bagItems||[]).forEach(function(x){if(x&&x.name){var k=x.name+'#'+(x.itemId||0);o[k]=(x.count||1);}});var a=[];for(var k in o)a.push(k.replace('#', ' x')+'='+o[k]);return a.join(', ');}" +
             "function countByName(list){var m={};(list||[]).forEach(function(o){if(o&&o.name)m[o.name]=(m[o.name]||0)+(o.count||1);});return m;}" +
@@ -122,82 +134,86 @@ namespace BaseButler.SourceExpand
 "if(ms==null)ms=1200;" +
 "for(var ci=0;ci<list.length&&order.length;ci++){var t=list[ci];var target=t.ownerId;" +
 "for(var rtry=0;rtry<2;rtry++){dbg((tag||'扫')+' 柜'+ci+' owner'+target+((rtry>0)?' 重试'+rtry:''));" +
-"var prom=waitBag(function(x){return x&&x.bagOwnerId===target;},ms);" +
+"var prom=waitBag(function(x){return x&&x.bagOwnerId===target;},(rtry===0)?Math.min(700,(ms||1200)):ms);" +
 "try{core.UnitySendEvent('TAB_SWITCH',{tab:t.idx});}catch(e){}" +
 "var d;try{d=await prom;}catch(e){dbg('  等柜超时');if(rtry===0)continue;try{window.__cseTimeoutOwn[target]=t;}catch(_){}break;}" +
 "try{if(d)window.__cseScannedOwn[target]=1;}catch(e){}" +
 "dbg('  收到 owner'+d.bagOwnerId+' 物品'+(d.bagItems||[]).length+' ['+itemNames(d)+']');" +
             "dbg('  含缺料: '+order.map(function(k){var c=(d.bagItems||[]).reduce(function(a,it){return a+((it&&it.name&&nameHit(it.name,k))?(it.count||1):0);},0);return c>0?k+'x'+c:null;}).filter(Boolean).join(',')||'无');" +
-"var sent=fillFromCabinet(target,d,expect,order);if(sent<0)return -1;" +
+"var sent=await fillFromCabinet(target,d,expect,order);if(sent<0)return -1;" +
 "order=order.filter(function(k){return expect[k].have<expect[k].need;});" +
 "try{if(!sent&&order.length&&(d.bagItems||[]).length>0)window.__cseEmptyOwn[target]=t;}catch(e){}" +
 "dbg('  本柜搬'+sent+' 仍缺['+order.join('|')+'] 期望['+order.map(function(k){return expect[k].name;}).join(',')+']');break;}}return 0;}" +
-            "function doCraft(){" +
+            "function doCraft(expect){" +
             "return new Promise(function(res){var r=window.__cseRecipe;if(!r||!r.recipeKey){toast('未获得选中配方，请先点选配方',false);return res();}" +
-            "setTimeout(function(){window.__cseInternalClick=1;try{core.UnitySendEvent('RECIPE_CLICK',{recipeKey:r.recipeKey});}catch(e){}window.__cseInternalClick=0;" +
-            "setTimeout(function(){try{core.UnitySendEvent('CRAFT');}catch(e){}res();},90);},400);});}" +
+            "setTimeout(function(){var seq0=window.__cseBagSeq||0;window.__cseInternalClick=1;try{core.UnitySendEvent('RECIPE_CLICK',{recipeKey:r.recipeKey});}catch(e){}window.__cseInternalClick=0;" +
+            "var t0=Date.now();(function ws(){var got=((window.__cseBagSeq||0)>seq0);if(got||Date.now()-t0>1500){" +
+            "var bsx=wbBag();var miss=expect?calcInv(wbItems(),expect):[];if(miss.length&&bsx)miss=calcInv(bsx,expect);" +
+            "dbg('制作前复核 缺['+(miss.join('|')||'无')+'] 前台台上'+JSON.stringify(wbInventory())+' 后台袋'+(bsx?JSON.stringify(countByName(bsx)):'无'));" +
+            "if(miss.length){toast('材料不足，未制作：'+miss.join('-'),false);return res();}" +
+            "try{core.UnitySendEvent('CRAFT');}catch(e){}return res();}setTimeout(ws,60);})();},400);});}" +
             "async function verifyMats(expect){" +
             "var deadline=Date.now()+3500;" +
-            "function calc(src){var idc={},nmc={};(src||[]).forEach(function(o){if(!o)return;var c=o.count||1;if(o.itemId!=null){var ik=''+(parseInt(o.itemId));idc[ik]=(idc[ik]||0)+c;}var n=String(o.name||'').replace(/[\\s\\u3000]/g,'');if(n)nmc[n]=(nmc[n]||0)+c;});var out=[];for(var k in expect){var e=expect[k];var haveN=(e.itemId!=null)?(idc[''+(parseInt(e.itemId))]||0):(nmc[String(e.name||'').replace(/[\\s\\u3000]/g,'')]||0);if(haveN<e.need)out.push(e.name);}return out;}" +
-            "function wbBag(){return (typeof window.__cseWbBag!=='undefined'&&window.__cseWbBag&&window.__cseWbBag.bagItems)?window.__cseWbBag.bagItems:null;}" +
             "while(Date.now()<deadline){" +
-            "var f=wbItems(),m0=calc(f);if(!m0.length)return m0;" +
-            "var bs=wbBag();var m1=bs?calc(bs):null;if(m1&&!m1.length)return [];" +
-            "dbg('仍缺['+m0.join('|')+'] 后台袋['+(bs?calc(bs).join('|'):'无')+']');" +
+            "var m0=calcInv(wbItems(),expect);if(!m0.length)return m0;" +
+            "var bs=wbBag();if(bs&&!calcInv(bs,expect).length)return [];" +
+            "dbg('仍缺['+m0.join('|')+'] 后台袋['+(bs?calcInv(bs,expect).join('|'):'无')+']');" +
             "await sleep(300);}" +
-            "var bs=wbBag();var m1=bs?calc(bs):null;if(m1&&!m1.length)return [];" +
-            "return calc(wbItems());}" +
+            "var bs2=wbBag();if(bs2&&!calcInv(bs2,expect).length)return [];" +
+            "return calcInv(wbItems(),expect);}" +
             "async function ensureRecipeSelected(key){" +
-            "if(!key)return;var before=window.__cseBagSeq||0;" +
+            "if(!key)return;if(window.__cseRecipe&&window.__cseRecipe.recipeKey===key)return;" +
+            "var before=window.__cseBagSeq||0;" +
             "window.__cseInternalClick=1;try{core.UnitySendEvent('RECIPE_CLICK',{recipeKey:key});}catch(e){}window.__cseInternalClick=0;" +
             "var deadline=Date.now()+1600;while(Date.now()<deadline&&((window.__cseBagSeq||0)<before+1)){await sleep(40);}}" +
             "async function gather(key,start){" +
             "if(window.__cseBusy)return 'wait';window.__cseBusy=1;var _st=start||Date.now();" +
             "try{" +
+            "window.__cseWbO=window.__cseWbO||wbOwner();" +
             "if(key)await ensureRecipeSelected(key);" +
             "var r=window.__cseRecipe;if(!r||!r.recipeKey){await sleep(120);return 'wait';}" +
             "var mats=getMats();if(!mats||!mats.length){dbg('配方材料未就绪，等待…');return 'wait';}" +
             "try{dbg('配方材料: '+mats.map(function(m){return (m.name||'?')+'(need'+(m.need||0)+')'+(m.itemId?('/itemId'+m.itemId):'')+(m.configId?('/cfg'+m.configId):'');}).join(' | ')+' || keys:'+Object.keys(mats[0]||{}).join(','));}catch(e){}" +
-            "var expect={},order=[];mats.forEach(function(m){var k=m.name;if(!(k in expect)){expect[k]={name:k,need:m.need||0,have:0,itemId:m.itemId||m.configId||null};order.push(k);}});" +
-            "var winv=wbInventory();order.forEach(function(k){var e=expect[k];var haveN=winv[k]||0;if(e.itemId!=null)haveN+=winv['#id'+(parseInt(e.itemId))]||0;if(haveN)e.have=Math.max(e.have,haveN);});" +
+            "var expect={},order=[];mats.forEach(function(m){var k=m.name;if(!(k in expect)){expect[k]={name:k,need:m.need||0,have:0,itemId:m.itemId||null,configId:m.configId||null};order.push(k);}});" +
+            "var winv=wbInventory();order.forEach(function(k){var e=expect[k];var haveN=winv[k]||0;var _hc=(e.configId!=null)?(winv['#cfg'+(parseInt(e.configId))]||0):0;var _hi=(e.itemId!=null)?(winv['#id'+(parseInt(e.itemId))]||0):0;if(_hc>haveN)haveN=_hc;if(_hi>haveN)haveN=_hi;if(haveN)e.have=Math.max(e.have,haveN);});" +
             "order=order.filter(function(k){return expect[k].have<expect[k].need;});" +
             "dbg('配方['+(r.name||'')+'] 缺['+order.map(function(k){return expect[k].name+'('+expect[k].need+')';}).join('|')+'] 台上['+JSON.stringify(winv)+']');" +
-            "if(!order.length){toast('材料已备齐，自动制作…',true);await doCraft();return 'ok';}" +
+            "if(!order.length){toast('材料已备齐，自动制作…',true);await doCraft(expect);return 'ok';}" +
             "var lm=(typeof lastBagMsg!=='undefined'?lastBagMsg:{})||{};var cabs=lm.cabinetTabs||[];var drawerO=lm.drawerOwnerId||0;var drawerShort=(lm.drawerShortCount||0);" +
             "if(!wbOwner()){return 'wait';}" +
             "function bpOwn(){try{return backpack&&backpack.getOwnerId?backpack.getOwnerId():0;}catch(e){return 0;}}" +
-            "function fillCurrent(){if(!order.length)return 0;var cd=(typeof window.__cseLastBag!=='undefined'&&window.__cseLastBag)?window.__cseLastBag:(typeof lastBagMsg!=='undefined'?lastBagMsg:null);" +
+            "async function fillCurrent(){if(!order.length)return 0;var cd=(typeof window.__cseLastBag!=='undefined'&&window.__cseLastBag)?window.__cseLastBag:(typeof lastBagMsg!=='undefined'?lastBagMsg:null);" +
             "if(!cd||!cd.bagItems)return 0;var oc=cd.bagOwnerId||0;if(!oc||oc===wbOwner())return 0;" +
-            "var ok=(oc===bpOwn())?1:0;for(var q=0;q<cabs.length;q++){if(cabs[q]&&cabs[q].ownerId===oc)ok=1;}if(oc===drawerO)ok=1;if(!ok)return 0;" +
-            "window.__cseOcc=wbOcc();var s=fillFromCabinet(oc,cd,expect,order);" +
+            "var ok=(oc===bpOwn())?1:0;for(var q=0;q<cabs.length;q++){if(cabs[q]&&cabs[q].ownerId===oc)ok=1;}if(oc===drawerO)ok=1;if(!ok)return 0;window.__cseCurSeen=oc;/*CSE_FIX_v9: 记录当前已直接取用的面板 owner，后续全扫/重扫不再重复扫它，省一次往返+可能的两轮超时*/" +
+            "window.__cseOcc=wbOcc();var s=await fillFromCabinet(oc,cd,expect,order);" +
             "order=order.filter(function(k){return expect[k].have<expect[k].need;});" +
             "dbg('直接用已展示面板(owner'+oc+')搬'+s+' 仍缺['+order.join('|')+']');return s;}" +
-            "function allSrcs(){var _wb=wbOwner(),a=[],pp=bpOwn();if(pp)a.push({ownerId:pp,idx:0});if(drawerO&&drawerO!==_wb)a.push({ownerId:drawerO,idx:1});for(var i=0;i<cabs.length;i++){var c=cabs[i];if(c&&c.ownerId&&c.ownerId!==_wb)a.push({ownerId:c.ownerId,idx:2+i});}return a;}" +
-            "window.__cseEmptyOwn=window.__cseEmptyOwn||{};fillCurrent();" +
+            "function allSrcs(){var _wb=wbOwner(),cur=window.__cseUnacked?0:(window.__cseCurSeen||0),a=[],pp=bpOwn();if(pp&&pp!==cur)a.push({ownerId:pp,idx:0});if(drawerO&&drawerO!==_wb&&drawerO!==cur)a.push({ownerId:drawerO,idx:1});for(var i=0;i<cabs.length;i++){var c=cabs[i];if(c&&c.ownerId&&c.ownerId!==_wb&&c.ownerId!==cur)a.push({ownerId:c.ownerId,idx:2+i});}return a;}" +
+            "window.__cseEmptyOwn=window.__cseEmptyOwn||{};await fillCurrent();" +
             "if(order.length){" +
-            "var scan=[];if(drawerO&&drawerShort>0)scan.push({ownerId:drawerO,idx:1});for(var i=0;i<cabs.length;i++){var c=cabs[i];if(c&&c.ownerId&&(c.shortCount||0)>0)scan.push({ownerId:c.ownerId,idx:2+i});}" +
+            "var scan=[];if(drawerO&&drawerShort>0&&drawerO!==(window.__cseCurSeen||0))scan.push({ownerId:drawerO,idx:1});for(var i=0;i<cabs.length;i++){var c=cabs[i];if(c&&c.ownerId&&(c.shortCount||0)>0&&c.ownerId!==(window.__cseCurSeen||0))scan.push({ownerId:c.ownerId,idx:2+i});}" +
 "if(scan.length){window.__cseOcc=wbOcc();window.__cseLastBag=null;window.__cseScannedOwn={};window.__cseTimeoutOwn={};window.__cseWbO=wbOwner();window.__cseWbBag=null;" +
             "dbg('官方标缺口柜 '+scan.length+' 个，工作台owner'+wbOwner());toast('正在从缺口柜补齐材料…',true);" +
             "if(await scanCabs(scan,expect,order,'缺')<0)return 'ok';" +
             "window.__cseOcc=wbOcc();window.__cseLastBag=null;}}else{toast('材料已备齐，自动制作…',true);}" +
-            "if(order.length){var full=allSrcs().filter(function(x){return !(window.__cseScannedOwn||{})[x.ownerId];});" +
+            "if(order.length){var full=allSrcs().filter(function(x){return window.__cseUnacked||!(window.__cseScannedOwn||{})[x.ownerId];});" +
             "dbg('全扫源 '+full.length+'/总'+allSrcs().length+' 柜tab'+cabs.length+' 背包o'+ ((function(){try{return backpack.getOwnerId?backpack.getOwnerId():0;}catch(e){return -1;}})()) +' 工作台o'+wbOwner() );" +
             "dbg('源厂家 ['+full.map(function(x){return 'o'+x.ownerId;}).join(',')+']');" +
             "if(full.length){dbg('仍缺['+order.join('|')+']，全扫(含背包)补齐');toast('储物柜/背包补齐…',true);" +
 "window.__cseOcc=wbOcc();window.__cseLastBag=null;if(await scanCabs(full,expect,order,'全')<0)return 'ok';}}" +
-"if(order.length){var to=[];for(var _oo in (window.__cseTimeoutOwn||{}))to.push(window.__cseTimeoutOwn[_oo]);for(var _ee in (window.__cseEmptyOwn||{}))to.push(window.__cseEmptyOwn[_ee]);" +
-"if(to.length){dbg('慢速重扫 '+to.length+' 个柜(超时+有料未命中)');toast('重扫有料柜…',true);" +
-"window.__cseOcc=wbOcc();window.__cseLastBag=null;if(await scanCabs(to,expect,order,'重',3200)<0)return 'ok';}}" +
+"if(order.length){var to=[];for(var _oo in (window.__cseTimeoutOwn||{})){var tt=window.__cseTimeoutOwn[_oo];if(tt&&tt.ownerId!==(window.__cseCurSeen||0))to.push(tt);}" +
+"if(to.length){dbg('再扫 '+to.length+' 个超时柜(内容确定性匹配缺失的空柜不再重扫)');toast('重扫超时柜…',true);" +
+"window.__cseOcc=wbOcc();window.__cseLastBag=null;if(await scanCabs(to,expect,order,'重',1500)<0)return 'ok';}}" +
             "if(order.length){var any=order.some(function(k){return expect[k].have>0;});if(any&&Date.now()-_st<2500){dbg('部分搬到['+order.join('|')+']，窗口内重扫补齐');return 'wait';}" +
             "if(!any){dbg('一处都没搬到['+order.join('|')+']，取消制作');toast('各处都找不到：'+order.join('-')+'，已取消制作',false);return 'cancel';}}" +
-            "await sleep(900);" +
+            "if(window.__cseUnacked)await sleep(900);/*CSE_FIX_v9: 全部移动均已获官方确认时，无需再固定等 900ms 沉降，直接进入实盘复核——显著缩短首次制作耗时*/" +
             "dbg('期望明细['+Object.keys(expect).map(function(k){return expect[k].name+' hv'+expect[k].have+'/'+expect[k].need;}).join(' | ')+']');" +
-            "/*CSE_FIX_v4: 以工作台实测实物为准（verifyMats 最多实盘重查 3.5s）再决定是否制作，避免乐观累计假备齐导致 CRAFT 空转、面板卡死*/" +
+            "/*CSE_FIX_v5: 两处收口——① 备齐判定不许再用\"已发送移动\"当成功（旧 movedAll 早退会让材料其实没到位时也发 CRAFT，官方必判失败、残留那几件又让每次点配方都 +1）；② 制作前不再只等 90ms，而是等官方 RECIPE_CLICK 触发的原生补料回包落地后，用实盘数据复核一次再发 CRAFT*/" +
             "var _miss=await verifyMats(expect);" +
             "if(_miss&&_miss.length){dbg('材料不足[实测]'+_miss.join('|')+'，取消制作，不发CRAFT');toast('材料不足，已取消制作：'+_miss.join('-'),false);return 'cancel';}" +
             "dbg('材料已备齐(实测工作台真实实物)，进入自动制作，交由官方后端最终判定');" +
             "toast('自动制作中…',true);" +
-            "await doCraft();" +
+            "await doCraft(expect);" +
             "dbg('已发送制作');" +
             "return 'ok';" +
             "}catch(e){dbg('异常 '+e.message);try{toast('补齐出错 '+e.message,false);}catch(_){}}" +
@@ -300,7 +316,7 @@ namespace BaseButler.SourceExpand
                 try { text = File.ReadAllText(path, new UTF8Encoding(false)); }
                 catch (Exception e) { log.LogWarning($"[CookingSourceExpand] 读取 ToolTable.html 失败：{e.Message}"); return; }
 
-                const string VerMarker = "CSE_GATHER_VER=5";
+                const string VerMarker = "CSE_GATHER_VER=13";
                 // 已打且版本最新：跳过
                 if (text.Contains(GatherSentinel) && text.Contains(VerMarker)) return;
 
