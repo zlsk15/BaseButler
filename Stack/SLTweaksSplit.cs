@@ -195,8 +195,17 @@ namespace BaseButler.Stack
                 AutoMergeSystem.MergePerishable = cfg.Bind("ItemStack", "AutoMergePerishable", true, "有时效物品也自动合并（true=启用）：同种食物的多堆会先按【剩余保质期最长的那堆】统一保质期，再并成一堆 —— 结果按最高保质期生效。发霉(污染)与新鲜分属不同子组，不会混在一起").Value;
                 AutoMergeSystem.MergeFlagDiff = cfg.Bind("ItemStack", "MergeFlagDiff", true, "标签差异也合并（true=启用，推荐）：允许【只差标签类字段（地图预置 preset / 已拆包 nopkg）】的同种物品并成一堆。这两项只记录物品来源，不改变新鲜度/污染/耐久/品质。可乐那种「一堆2一堆3怎么都合不上」就是被它卡住的。关掉则回到严格判定（只并逐实例字段完全一致的堆）").Value;
                 AutoMergeSystem.MergeOnAdd = cfg.Bind("ItemStack", "MergeOnPickup", true, "落袋即合并（true=启用，推荐）：物品刚放进容器就立刻催一次合并，有保质期的食物/饮料也一样（不必等满 AutoMergeIntervalSec）。保质期不一致时按【最长的那堆】统一生效。关掉则只按固定间隔扫描").Value;
-                // 使用 BaseButler 传入的共享 harmony；拆分补丁用 CreateClassProcessor 精确挂载（避免 PatchAll 波及程序集内其它补丁）
-                harmony.CreateClassProcessor(typeof(SplitHalfPatch)).Patch();
+                // 使用 BaseButler 传入的共享 harmony；拆分补丁用 CreateClassProcessor 精确挂载（避免 PatchAll 波及程序集内其它补丁）。
+                // 若 OnMessageFromJS 的 Vuplex 签名解析被系统策略拦截（见 BaseButlerPlugin.PreloadVuplexInterop），
+                // 只停用拆分，绝不让它连累堆叠扩展/自动合并等其余功能。
+                try
+                {
+                    harmony.CreateClassProcessor(typeof(SplitHalfPatch)).Patch();
+                }
+                catch (Exception exSplit)
+                {
+                    Log.LogError("[堆叠拆分] SplitHalfPatch(OnMessageFromJS) 注册失败，Shift/Ctrl+右键拆分停用（堆叠扩展/自动合并等继续加载）：" + exSplit.Message);
+                }
                 try
                 {
                     MethodInfo findStackable = AccessTools.Method(typeof(ItemManager), "FindStackableItem", null, null);
