@@ -387,5 +387,120 @@ namespace BaseButler.SourceExpand
                 log.LogWarning($"[CookingSourceExpand] 『菜谱稳定排序』补丁失败：{e.Message}");
             }
         }
+
+        // ===== 游戏内堆叠可视化开关（v2.0.11）=====
+        // 独立哨兵 + 版本标记，幂等、抗 Steam 更新。向 ToolTable.html 注入右上角「堆叠:开/关」固定按钮：
+        // 点击 → core.UnitySendEvent('CSE_TOGGLE_STACK',{on:!cur}) → C# 切换运行时总开关并写回 cfg。
+        // 初始状态以 <meta name="cse-stack-state" content="0/1"> 持久在 HTML 里（C# 每次切换后重写），
+        // 保证按钮状态、cfg、运行时状态三者一致。
+        private const string StackToggleSentinel = "CSE_AUTOPATCH_STACKTOGGLE";
+        private const string StackToggleVer = "CSE_STACKTOGGLE_VER=1";
+
+        private const string StackToggleHtml =
+            "<meta name=\"cse-stack-state\" content=\"__CSE_STACK_INIT__\" data-cse=\"1\" />\n" +
+            "<style data-cse=\"1\">" +
+            "#cseStackToggle{position:fixed;right:12px;top:12px;z-index:99999;padding:8px 16px;font-size:15px;font-weight:700;" +
+            "border:2px solid rgba(255,255,255,.55);border-radius:8px;cursor:pointer;user-select:none;" +
+            "box-shadow:0 2px 10px rgba(0,0,0,.45);font-family:Arial,'Microsoft YaHei',sans-serif;}" +
+            "#cseStackToggle.on{background:rgba(46,160,67,.92);color:#fff;}" +
+            "#cseStackToggle.off{background:rgba(219,68,55,.92);color:#fff;}" +
+            "</style>\n" +
+            "<script>" +
+            "(function(){if(window.__cseStackToggleLoaded)return;window.__cseStackToggleLoaded=1;/*CSE_STACKTOGGLE_VER=1*/" +
+            "var init=1;try{var m=document.querySelector('meta[name=\"cse-stack-state\"]');if(m&&m.getAttribute&&m.getAttribute('content')==='0')init=0;}catch(e){}" +
+            "window.__cseStackOn=!!init;" +
+            "function paint(){var b=document.getElementById('cseStackToggle');if(!b)return;b.textContent=window.__cseStackOn?'堆叠:开':'堆叠:关';b.className=window.__cseStackOn?'on':'off';}" +
+            "function mk(){if(document.getElementById('cseStackToggle'))return;var b=document.createElement('button');b.id='cseStackToggle';b.type='button';" +
+            "b.addEventListener('click',function(){window.__cseStackOn=!window.__cseStackOn;paint();try{if(core&&core.UnitySendEvent)core.UnitySendEvent('CSE_TOGGLE_STACK',{on:window.__cseStackOn});}catch(e){}});" +
+            "document.body.appendChild(b);paint();}" +
+            "function loop(){mk();var n=0;var t=setInterval(function(){if(document.getElementById('cseStackToggle')){clearInterval(t);return;}mk();if(++n>300)clearInterval(t);},300);}" +
+            "if(document.readyState!=='loading')loop();else document.addEventListener('DOMContentLoaded',loop);" +
+            "})();" +
+            "</script>";
+
+        /// <summary>注入 / 刷新工作台右上角「堆叠:开/关」按钮（internal：Stack.Plugin.Init 注入，CSE_TOGGLE_STACK 事件刷新状态）。</summary>
+        internal static void ApplyStackToggle(ManualLogSource log, bool on)
+        {
+            try
+            {
+                var path = Path.Combine(UiRoot, "ToolTable", "ToolTable.html");
+                if (!File.Exists(path))
+                {
+                    log.LogWarning("[堆叠可视化开关] ToolTable.html 不存在，补丁跳过。");
+                    return;
+                }
+                string text;
+                try { text = File.ReadAllText(path, new UTF8Encoding(false)); }
+                catch (Exception e) { log.LogWarning($"[堆叠可视化开关] 读取 ToolTable.html 失败：{e.Message}"); return; }
+
+                if (text.Contains(StackToggleSentinel))
+                {
+                    if (text.Contains(StackToggleVer))
+                    {
+                        // 已打且版本最新：只刷新初始状态 meta（下次打开面板，按钮初始即当前开关状态）
+                        WriteStackToggleState(path, text, log, on);
+                    }
+                    else
+                    {
+                        // 旧版本注入：整块移除后按新版本重打
+                        text = RemoveStackToggleBlock(text);
+                        InjectStackToggleBlock(path, text, log, on);
+                    }
+                    return;
+                }
+
+                // 首次打：备份原文件
+                var bak = path + ".cse.bak";
+                if (!File.Exists(bak))
+                {
+                    try { File.WriteAllText(bak, text, new UTF8Encoding(false)); }
+                    catch (Exception e) { log.LogWarning($"[堆叠可视化开关] 备份 ToolTable.html 失败：{e.Message}"); }
+                }
+                InjectStackToggleBlock(path, text, log, on);
+            }
+            catch (Exception e)
+            {
+                log.LogWarning($"[堆叠可视化开关] 补丁失败：{e.Message}");
+            }
+        }
+
+        private static void InjectStackToggleBlock(string path, string text, ManualLogSource log, bool on)
+        {
+            string block = StackToggleHtml.Replace("__CSE_STACK_INIT__", on ? "1" : "0");
+            int bodyIdx = text.LastIndexOf("</body>", StringComparison.OrdinalIgnoreCase);
+            if (bodyIdx >= 0)
+            {
+                text = text.Substring(0, bodyIdx) + block + "\n<!-- " + StackToggleSentinel + " -->\n" + text.Substring(bodyIdx);
+            }
+            else
+            {
+                text = text + "\n<!-- " + StackToggleSentinel + " -->";
+            }
+            File.WriteAllText(path, text, new UTF8Encoding(false));
+            string state = on ? "开" : "关";
+            log.LogInfo($"[堆叠可视化开关] 已给 ToolTable.html 打上『堆叠:开/关』按钮（初始：{state}）。");
+        }
+
+        private static void WriteStackToggleState(string path, string text, ManualLogSource log, bool on)
+        {
+            string v = on ? "1" : "0";
+            var re = new Regex("<meta name=\"cse-stack-state\" content=\"[01]\"", RegexOptions.IgnoreCase);
+            if (re.IsMatch(text))
+            {
+                text = re.Replace(text, "<meta name=\"cse-stack-state\" content=\"" + v + "\"", 1);
+                File.WriteAllText(path, text, new UTF8Encoding(false));
+            }
+            string state = on ? "开" : "关";
+            log.LogInfo($"[堆叠可视化开关] 状态已刷新 → {state}。");
+        }
+
+        private static string RemoveStackToggleBlock(string text)
+        {
+            // 整块移除（meta 起始 → 哨兵注释结束），负向结构保证不跨其它 script
+            var re = new Regex(
+                "\\s*<meta name=\"cse-stack-state\"[^>]*/>[\\s\\S]*?<script[^>]*>[\\s\\S]*?__cseStackToggleLoaded[\\s\\S]*?</script>\\s*<!--\\s*" + StackToggleSentinel + "\\s*-->",
+                RegexOptions.IgnoreCase);
+            return re.Replace(text, "");
+        }
     }
 }
